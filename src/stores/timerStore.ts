@@ -20,6 +20,12 @@ function generateId(): string {
 // Timer Store Types
 // ==========================================
 
+interface TimerClock {
+    anchoredAt: number
+    remainingMs: number
+    hyperfocusMs: number
+}
+
 interface TimerState {
     // Timer state
     mode: TimerMode
@@ -31,6 +37,7 @@ interface TimerState {
     sessionStartedAt: string | null
     hyperfocusEnabled: boolean
     pausedFromHyperfocus: boolean
+    clock: TimerClock | null
 
     // Settings
     settings: AppSettings
@@ -106,6 +113,29 @@ function getDailyPomodoros(completedPomodoros: number, lastPomodoroDate: string 
     return completedPomodoros
 }
 
+// The persisted anchor is the source of truth. Ticks only refresh the display;
+// their frequency (or duplication) must never change the measured duration.
+function readClock(state: TimerState, now = Date.now()): TimerClock {
+    const clock = state.clock ?? {
+        anchoredAt: now,
+        remainingMs: state.secondsRemaining * 1000,
+        hyperfocusMs: state.hyperfocusSeconds * 1000,
+    }
+    const elapsed = Math.max(0, now - clock.anchoredAt)
+    return {
+        anchoredAt: now,
+        remainingMs: clock.remainingMs - (state.status === 'running' ? elapsed : 0),
+        hyperfocusMs: clock.hyperfocusMs + (state.status === 'hyperfocus' ? elapsed : 0),
+    }
+}
+
+function clockDisplay(clock: TimerClock) {
+    return {
+        secondsRemaining: Math.max(0, Math.ceil(clock.remainingMs / 1000)),
+        hyperfocusSeconds: Math.floor(clock.hyperfocusMs / 1000),
+    }
+}
+
 // ==========================================
 // Timer Store
 // ==========================================
@@ -123,6 +153,7 @@ export const useTimerStore = create<TimerState>()(
             sessionStartedAt: null,
             hyperfocusEnabled: false,
             pausedFromHyperfocus: false,
+            clock: null,
 
             // Settings
             settings: DEFAULT_SETTINGS,
@@ -133,6 +164,7 @@ export const useTimerStore = create<TimerState>()(
 
             // Actions
             setMode: (mode) => {
+                get().tick()
                 const { settings, mode: currentMode, status, secondsRemaining, hyperfocusSeconds, sessionStartedAt } = get()
 
                 // Save partial session if switching away from an active focus mode
@@ -162,6 +194,7 @@ export const useTimerStore = create<TimerState>()(
                 set({
                     mode,
                     status: 'idle',
+                    clock: null,
                     secondsRemaining: getDurationForMode(mode, settings),
                     hyperfocusSeconds: 0,
                     sessionStartedAt: null,
@@ -170,13 +203,18 @@ export const useTimerStore = create<TimerState>()(
             },
 
             start: () => {
-                const { status, sessionStartedAt, pausedFromHyperfocus } = get()
+                const state = get()
+                const { status, sessionStartedAt, pausedFromHyperfocus } = state
+                if (status === 'running' || status === 'hyperfocus') return
+                const clock = readClock(state)
                 if (pausedFromHyperfocus) {
                     // Resume hyperfocus counting
-                    set({ status: 'hyperfocus', pausedFromHyperfocus: false })
+                    set({ status: 'hyperfocus', pausedFromHyperfocus: false, clock, ...clockDisplay(clock) })
                 } else {
                     set({
                         status: 'running',
+                        clock,
+                        ...clockDisplay(clock),
                         sessionStartedAt:
                             status === 'idle'
                                 ? new Date().toISOString()
@@ -186,14 +224,20 @@ export const useTimerStore = create<TimerState>()(
             },
 
             pause: () => {
-                const { status } = get()
+                const state = get()
+                const { status } = state
+                if (status !== 'running' && status !== 'hyperfocus') return
+                const clock = readClock(state)
                 set({
                     status: 'paused',
+                    clock,
+                    ...clockDisplay(clock),
                     pausedFromHyperfocus: status === 'hyperfocus',
                 })
             },
 
             reset: () => {
+                get().tick()
                 const { mode, settings, status, secondsRemaining, hyperfocusSeconds, sessionStartedAt } = get()
                 
                 // Save partial session if resetting during a focus mode
@@ -222,6 +266,7 @@ export const useTimerStore = create<TimerState>()(
                 
                 set({
                     status: 'idle',
+                    clock: null,
                     secondsRemaining: getDurationForMode(mode, settings),
                     hyperfocusSeconds: 0,
                     sessionStartedAt: null,
@@ -230,6 +275,7 @@ export const useTimerStore = create<TimerState>()(
             },
 
             skip: () => {
+                get().tick()
                 const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = get()
                 const dailyPomodoros = getDailyPomodoros(completedPomodoros, lastPomodoroDate)
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
@@ -259,6 +305,7 @@ export const useTimerStore = create<TimerState>()(
                 set({
                     mode: nextMode,
                     status: 'idle',
+                    clock: null,
                     secondsRemaining: getDurationForMode(nextMode, settings),
                     hyperfocusSeconds: 0,
                     completedPomodoros: newPomodoros,
@@ -300,6 +347,13 @@ export const useTimerStore = create<TimerState>()(
                 set({
                     mode: nextMode,
                     status: shouldAutoStart ? 'running' : 'idle',
+                    // A resumed page completes the expired phase once. Auto-start
+                    // begins the next phase now, without inventing offline cycles.
+                    clock: shouldAutoStart ? {
+                        anchoredAt: Date.now(),
+                        remainingMs: getDurationForMode(nextMode, settings) * 1000,
+                        hyperfocusMs: 0,
+                    } : null,
                     secondsRemaining: getDurationForMode(nextMode, settings),
                     hyperfocusSeconds: 0,
                     completedPomodoros: newPomodoros,
@@ -310,22 +364,32 @@ export const useTimerStore = create<TimerState>()(
             },
 
             tick: () => {
-                const { secondsRemaining } = get()
-                if (secondsRemaining > 0) {
-                    set({ secondsRemaining: secondsRemaining - 1 })
+                const state = get()
+                if (state.status !== 'running' && state.status !== 'hyperfocus') return
+                const clock = readClock(state)
+                const display = clockDisplay(clock)
+                if (!state.clock || display.secondsRemaining !== state.secondsRemaining || display.hyperfocusSeconds !== state.hyperfocusSeconds) {
+                    set({ ...display, ...(!state.clock ? { clock } : {}) })
                 }
             },
 
             tickHyperfocus: () => {
-                const { hyperfocusSeconds } = get()
-                set({ hyperfocusSeconds: hyperfocusSeconds + 1 })
+                get().tick()
             },
 
             enterHyperfocus: () => {
-                set({ status: 'hyperfocus', hyperfocusSeconds: 0 })
+                const state = get()
+                const elapsedClock = readClock(state)
+                const clock = {
+                    anchoredAt: elapsedClock.anchoredAt,
+                    remainingMs: 0,
+                    hyperfocusMs: Math.max(0, -elapsedClock.remainingMs),
+                }
+                set({ status: 'hyperfocus', clock, ...clockDisplay(clock) })
             },
 
             exitHyperfocus: () => {
+                get().tick()
                 const { mode, completedPomodoros, settings, hyperfocusSeconds, sessionStartedAt, lastPomodoroDate } = get()
                 const dailyPomodoros = getDailyPomodoros(completedPomodoros, lastPomodoroDate)
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
@@ -352,6 +416,7 @@ export const useTimerStore = create<TimerState>()(
                 set({
                     mode: nextMode,
                     status: 'idle',
+                    clock: null,
                     secondsRemaining: getDurationForMode(nextMode, settings),
                     hyperfocusSeconds: 0,
                     completedPomodoros: newPomodoros,
@@ -367,7 +432,7 @@ export const useTimerStore = create<TimerState>()(
             },
 
             updateSettings: (newSettings) => {
-                const { settings, mode, status, secondsRemaining } = get()
+                const { settings, mode, status } = get()
                 const merged = { ...settings, ...newSettings }
                 const updates: Partial<TimerState> = { settings: merged }
 
@@ -377,20 +442,26 @@ export const useTimerStore = create<TimerState>()(
                 }
                 // If paused, try to preserve ELAPSED time
                 // New Remaining = New Total - (Old Total - Old Remaining)
-                else if (status === 'paused') {
+                else if (status === 'paused' && !get().pausedFromHyperfocus) {
                     const oldTotal = getDurationForMode(mode, settings)
-                    const elapsed = oldTotal - secondsRemaining
+                    const clock = readClock(get())
+                    const elapsed = oldTotal - clock.remainingMs / 1000
                     const newTotal = getDurationForMode(mode, merged)
                     const newRemaining = Math.max(0, newTotal - elapsed)
 
-                    updates.secondsRemaining = newRemaining
+                    updates.secondsRemaining = Math.ceil(newRemaining)
+                    updates.clock = { ...clock, remainingMs: newRemaining * 1000 }
                 }
 
                 set(updates)
             },
 
             setSecondsRemaining: (seconds) => {
-                set({ secondsRemaining: seconds })
+                const state = get()
+                set({
+                    secondsRemaining: seconds,
+                    clock: state.status === 'idle' ? null : { ...readClock(state), remainingMs: seconds * 1000 },
+                })
             },
 
             resetStats: () => {
@@ -440,6 +511,7 @@ export const useTimerStore = create<TimerState>()(
                 hyperfocusSeconds: state.hyperfocusSeconds,
                 pausedFromHyperfocus: state.pausedFromHyperfocus,
                 sessionStartedAt: state.sessionStartedAt,
+                clock: state.clock,
                 pendingSessions: state.pendingSessions,
             }),
             // Deep merge to handle new settings fields (e.g. dashboardAccent)
@@ -459,9 +531,12 @@ export const useTimerStore = create<TimerState>()(
                     }
                 }
 
+                // Legacy sessions have no timestamp to recover elapsed time from.
+                // Keep the old previous-day recovery only for those sessions.
                 // Recover stale sessions: if there's an active focus session
                 // from a previous day, auto-save the partial progress and reset
                 if (
+                    !p.clock &&
                     merged.mode === 'focus' &&
                     (merged.status === 'running' || merged.status === 'paused' || merged.status === 'hyperfocus') &&
                     merged.sessionStartedAt
@@ -496,7 +571,17 @@ export const useTimerStore = create<TimerState>()(
                         merged.hyperfocusSeconds = 0
                         merged.sessionStartedAt = null
                         merged.pausedFromHyperfocus = false
+                        merged.clock = null
                     }
+                }
+
+                if (merged.status !== 'idle') {
+                    // Migrate old snapshots using their saved seconds; never infer
+                    // elapsed time from sessionStartedAt, which includes pauses.
+                    merged.clock = p.clock ?? readClock({ ...merged, clock: null })
+                    Object.assign(merged, clockDisplay(readClock(merged)))
+                } else {
+                    merged.clock = null
                 }
 
                 return merged

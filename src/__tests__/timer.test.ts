@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useTimerStore } from '@/stores/timerStore'
 import { DEFAULT_SETTINGS } from '@/types'
 
 describe('Timer Store', () => {
     beforeEach(() => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date('2026-09-19T12:00:00Z'))
         // Reset store state before each test
         useTimerStore.setState({
             mode: 'focus',
@@ -16,8 +18,12 @@ describe('Timer Store', () => {
             pausedFromHyperfocus: false,
             settings: DEFAULT_SETTINGS,
             pendingSessions: [],
+            clock: null,
+            lastPomodoroDate: null,
         })
     })
+
+    afterEach(() => vi.useRealTimers())
 
     describe('initial state', () => {
         it('should start in focus mode', () => {
@@ -70,6 +76,7 @@ describe('Timer Store', () => {
 
         it('should reset to initial seconds on reset', () => {
             useTimerStore.getState().start()
+            vi.advanceTimersByTime(2000)
             useTimerStore.getState().tick()
             useTimerStore.getState().tick()
             useTimerStore.getState().reset()
@@ -81,8 +88,10 @@ describe('Timer Store', () => {
     })
 
     describe('tick', () => {
-        it('should decrement seconds by 1 on tick', () => {
+        it('should decrement seconds after one elapsed second', () => {
             const initialSeconds = useTimerStore.getState().secondsRemaining
+            useTimerStore.getState().start()
+            vi.advanceTimersByTime(1000)
             useTimerStore.getState().tick()
             expect(useTimerStore.getState().secondsRemaining).toBe(
                 initialSeconds - 1
@@ -157,6 +166,7 @@ describe('Timer Store', () => {
 
         it('should increment hyperfocus seconds on tickHyperfocus', () => {
             useTimerStore.getState().enterHyperfocus()
+            vi.advanceTimersByTime(2000)
             useTimerStore.getState().tickHyperfocus()
             useTimerStore.getState().tickHyperfocus()
             expect(useTimerStore.getState().hyperfocusSeconds).toBe(2)
@@ -175,6 +185,7 @@ describe('Timer Store', () => {
 
         it('should pause and resume during hyperfocus without resetting', () => {
             useTimerStore.getState().enterHyperfocus()
+            vi.advanceTimersByTime(2000)
             useTimerStore.getState().tickHyperfocus()
             useTimerStore.getState().tickHyperfocus()
             expect(useTimerStore.getState().hyperfocusSeconds).toBe(2)
@@ -233,6 +244,7 @@ describe('Timer Store', () => {
             useTimerStore.getState().start()
             // Simulate 120 seconds (2 minutes) of study
             for (let i = 0; i < 120; i++) {
+                vi.advanceTimersByTime(1000)
                 useTimerStore.getState().tick()
             }
             useTimerStore.getState().setMode('shortBreak')
@@ -250,6 +262,7 @@ describe('Timer Store', () => {
             useTimerStore.getState().start()
             // Only 30 seconds
             for (let i = 0; i < 30; i++) {
+                vi.advanceTimersByTime(1000)
                 useTimerStore.getState().tick()
             }
             useTimerStore.getState().setMode('shortBreak')
@@ -262,6 +275,7 @@ describe('Timer Store', () => {
             useTimerStore.getState().setMode('shortBreak')
             useTimerStore.getState().start()
             for (let i = 0; i < 120; i++) {
+                vi.advanceTimersByTime(1000)
                 useTimerStore.getState().tick()
             }
             useTimerStore.getState().setMode('focus')

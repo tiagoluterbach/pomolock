@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useTimerStore } from '@/stores/timerStore'
 
 // Request notification permission on first load
@@ -28,7 +28,7 @@ function showTimerNotification(mode: string) {
             window.focus()
             notification.close()
         }
-    } catch (_) {
+    } catch {
         // Fallback: some browsers don't support Notification constructor in this context
     }
 }
@@ -38,13 +38,11 @@ export function TimerRunner() {
     const mode = useTimerStore((s) => s.mode)
     const secondsRemaining = useTimerStore((s) => s.secondsRemaining)
     const hyperfocusSeconds = useTimerStore((s) => s.hyperfocusSeconds)
-    const tick = useTimerStore((s) => s.tick)
-    const tickHyperfocus = useTimerStore((s) => s.tickHyperfocus)
+    const clock = useTimerStore((s) => s.clock)
 
     // Settings
     const showTimerInTitle = useTimerStore((s) => s.settings.showTimerInTitle ?? true)
 
-    const workerRef = useRef<Worker | null>(null)
     const audioRef = useRef<HTMLAudioElement | null>(null)
     const alarmCancelledRef = useRef(false)
     // Web Audio API context + pre-decoded buffers for background-tab playback
@@ -55,52 +53,6 @@ export function TimerRunner() {
     // Request notification permission on mount
     useEffect(() => {
         requestNotificationPermission()
-    }, [])
-
-    // Initialize worker
-    useEffect(() => {
-        if (typeof Worker !== 'undefined') {
-            workerRef.current = new Worker('/timerWorker.js')
-            workerRef.current.onmessage = (e) => {
-                if (e.data.type === 'tick') {
-                    const state = useTimerStore.getState()
-                    if (state.status === 'hyperfocus') {
-                        state.tickHyperfocus()
-                    } else if (state.status === 'running') {
-                        state.tick()
-                    }
-                } else if (e.data.type === 'completed') {
-                    // Worker detected timer completion — handle alarm + notification
-                    const state = useTimerStore.getState()
-                    if (state.status !== 'running') return // Already handled
-
-                    const { settings, mode, hyperfocusEnabled, reset, enterHyperfocus } = state
-
-                    // Show notification (works in background tabs!)
-                    if (!document.hasFocus()) {
-                        showTimerNotification(mode)
-                    }
-
-                    // Play alarm sound
-                    const shouldPlaySound = settings.soundEnabled && !(mode === 'focus' && hyperfocusEnabled)
-                    if (shouldPlaySound) {
-                        playAlarm(settings)
-                    }
-
-                    // Handle mode transition
-                    if (mode === 'focus' && hyperfocusEnabled) {
-                        enterHyperfocus()
-                        workerRef.current?.postMessage({ type: 'hyperfocus' })
-                    } else {
-                        state.complete()
-                    }
-                }
-            }
-        }
-
-        return () => {
-            workerRef.current?.terminate()
-        }
     }, [])
 
     // Initialize AudioContext on first user interaction & pre-fetch audio buffers
@@ -117,7 +69,7 @@ export function TimerRunner() {
                     const arrayBuffer = await response.arrayBuffer()
                     const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
                     audioBuffersRef.current[file] = audioBuffer
-                } catch (_) { /* silently ignore if fetch fails */ }
+                } catch { /* silently ignore if fetch fails */ }
             }
         }
 
@@ -166,7 +118,7 @@ export function TimerRunner() {
     }, [status])
 
     // Helper to play alarm sound (Web Audio API — works in background tabs)
-    const playAlarm = (settings: { alarmSound: string; soundVolume: number; alarmRepeatCount: number }) => {
+    const playAlarm = useCallback((settings: { alarmSound: string; soundVolume: number; alarmRepeatCount: number }) => {
         try {
             const repeat = settings.alarmRepeatCount || 3
             const soundFile = settings.alarmSound === 'kazakhstan' ? '/kazakhstan.mp3' : '/bip.mp3'
@@ -210,68 +162,88 @@ export function TimerRunner() {
         } catch (e) {
             console.error("Audio playback failed", e)
         }
-    }
+    }, [])
 
     // Helper to stop alarm
-    const stopAlarm = () => {
+    const stopAlarm = useCallback(() => {
         if (audioRef.current) {
             try {
                 audioRef.current.pause()
                 audioRef.current.currentTime = 0
-            } catch (_) { /* ignore */ }
+            } catch { /* ignore */ }
             audioRef.current = null
         }
         alarmCancelledRef.current = true
-    }
+    }, [])
 
     // Listen for explicit "stop alarm" from UI components (e.g. ModeSelector)
     useEffect(() => {
         const handler = () => stopAlarm()
         window.addEventListener('pomodoro-stop-alarm', handler)
         return () => window.removeEventListener('pomodoro-stop-alarm', handler)
-    }, [])
+    }, [stopAlarm])
 
-    // Start/Stop worker + stop alarm ONLY when user starts a new timer
+    // Preserve alarm cancellation when the user resumes or starts a timer.
     useEffect(() => {
-        if (status === 'running') {
-            stopAlarm()
-            workerRef.current?.postMessage({ type: 'start', seconds: secondsRemaining })
-        } else if (status === 'hyperfocus') {
-            stopAlarm()
-            workerRef.current?.postMessage({ type: 'start', seconds: 0 })
-            workerRef.current?.postMessage({ type: 'hyperfocus' })
-        } else {
-            workerRef.current?.postMessage({ type: 'stop' })
-        }
-    }, [status])
+        if (status === 'running' || status === 'hyperfocus') stopAlarm()
+    }, [status, stopAlarm])
 
-    // Fallback: Alarm & Completion Logic for when tab IS in foreground
-    // (the worker 'completed' handler above covers background tabs)
+    // Worker messages are wake-ups, never seconds. Reconcile immediately on
+    // resume/reload, and use one completion path for foreground and background.
     useEffect(() => {
-        if (status === 'running' && secondsRemaining === 0) {
-            // Check if worker already handled this (it might have via 'completed' message)
-            // The worker sets secondsRemaining via tick(), so if we get here,
-            // it means the React effect fired. The worker's 'completed' handler
-            // also runs, but it checks status === 'running' which would be false
-            // after reset(). So this is safe as a double-check.
+        if (status !== 'running' && status !== 'hyperfocus') return
+
+        const refresh = () => {
+            const before = useTimerStore.getState()
+            // Ignore queued messages from a previous phase or paused interval.
+            if (before.clock !== clock || before.status !== status || before.mode !== mode) return
+            before.tick()
             const state = useTimerStore.getState()
-            if (state.status !== 'running') return // Already handled by worker
+            if (state.status !== 'running' || state.secondsRemaining > 0) return
 
-            const { settings, mode, hyperfocusEnabled, reset, enterHyperfocus } = state
-
-            const shouldPlaySound = settings.soundEnabled && !(mode === 'focus' && hyperfocusEnabled)
-            if (shouldPlaySound) {
-                playAlarm(settings)
-            }
-
-            if (mode === 'focus' && hyperfocusEnabled) {
-                enterHyperfocus()
-                workerRef.current?.postMessage({ type: 'hyperfocus' })
+            const { settings, hyperfocusEnabled } = state
+            // Transition synchronously so another wake-up cannot complete twice.
+            if (state.mode === 'focus' && hyperfocusEnabled) {
+                state.enterHyperfocus()
             } else {
                 state.complete()
             }
+            if (!document.hasFocus()) showTimerNotification(state.mode)
+            if (settings.soundEnabled && !(state.mode === 'focus' && hyperfocusEnabled)) {
+                playAlarm(settings)
+            }
         }
-    }, [secondsRemaining, status])
+
+        let worker: Worker | null = null
+        let fallback: number | undefined
+        const startFallback = () => {
+            worker?.terminate()
+            worker = null
+            if (fallback === undefined) fallback = window.setInterval(refresh, 1000)
+        }
+        try {
+            worker = new Worker('/timerWorker.js')
+            worker.onmessage = (event) => {
+                if (event.data.type === 'tick') refresh()
+            }
+            worker.onerror = startFallback
+            worker.postMessage({ type: 'start' })
+        } catch {
+            startFallback()
+        }
+
+        window.addEventListener('focus', refresh)
+        window.addEventListener('pageshow', refresh)
+        document.addEventListener('visibilitychange', refresh)
+        refresh()
+        return () => {
+            worker?.terminate()
+            if (fallback !== undefined) window.clearInterval(fallback)
+            window.removeEventListener('focus', refresh)
+            window.removeEventListener('pageshow', refresh)
+            document.removeEventListener('visibilitychange', refresh)
+        }
+    }, [status, mode, clock, playAlarm])
 
     // Update Page Title
     useEffect(() => {
