@@ -46,11 +46,12 @@ export function Navbar() {
         }
     }
 
+    // Let clicks pass through the transparent space when page content scrolls underneath.
     return (
-        <nav className="fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center justify-between">
+        <nav className="pointer-events-none fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center justify-between">
             <Link
                 href="/"
-                className="flex items-center gap-2 text-white/90 hover:text-white transition-colors"
+                className="pointer-events-auto flex items-center gap-2 text-white/90 hover:text-white transition-colors"
             >
                 <Timer className="h-5 w-5" />
                 <span className="font-bold text-lg tracking-tight hidden sm:inline">
@@ -58,7 +59,7 @@ export function Navbar() {
                 </span>
             </Link>
 
-            <div className="flex items-center gap-1">
+            <div className="pointer-events-auto flex items-center gap-1">
                 <Link href="/dashboard">
                     <Button
                         variant="ghost"
