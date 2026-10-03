@@ -1,80 +1,102 @@
-<div align="center">
+# PomoLock
 
-# 🍅 PomoLock
+A Pomodoro timer with hyperfocus mode, a study heatmap, a Data Science roadmap and cross-device sync.
 
-**A modern Pomodoro timer with hyperfocus mode, visual statistics, and cloud sync.**
+**[pomolock.vercel.app](https://pomolock.vercel.app)** · [Versão em português](./README.md)
 
-🌐 **[Try PomoLock](https://pomolock.vercel.app)**
+## Why it exists
 
-*[🇧🇷 Versão em português](./README.md)*
+I wanted a simple Pomodoro timer that showed my consistency like a habit tracker, in the style of
+[YeolPumTa (열품타)](https://play.google.com/store/apps/details?id=com.pallo.passiontimerscoped), and that
+worked the same on my home computer and at university. I could not find one, so I built it.
 
-</div>
+## Features
 
----
+- **Pomodoro timer** with configurable focus, short break and long break.
+- **Hyperfocus**: when enabled, the timer does not cut your focus when a Pomodoro ends. Extra time keeps
+  counting until you decide to take the break.
+- **Statistics**: a monthly heatmap of hours studied per day and a day streak.
+- **Roadmap**: a checklist of Data Science areas (Python, SQL, Statistics, Machine Learning...) with progress
+  per area.
+- **Daily greeting**: a message with your name on the first visit of the day, gone once the timer starts.
+- **Optional Google sign-in** with settings and sessions synced to the cloud.
+- **Works offline and installs as a PWA**. Sessions recorded offline are uploaded when the connection returns.
+- **Custom alarms and colors**, plus JSON data export.
 
-## 💡 Motivation
+## Tech stack
 
-I wanted a simple Pomodoro app, but one that had something most don't: **visual statistics in a habit tracker style**, inspired by [YeolPumTa (열품타)](https://play.google.com/store/apps/details?id=com.pallo.passiontimerscoped&hl=pt_BR), a Korean study app. The idea was to visualize daily progress through a **heatmap** — similar to GitHub's contribution graph — to stay motivated and consistent with my studies.
-
-Another key requirement was **cross-device synchronization**: I wanted to access my statistics from both my personal computer and the university computers, without losing any data. That's why PomoLock features Google login and cloud storage, ensuring everything is always up to date regardless of where I access it.
-
-Since I couldn't find anything that met my exact needs, I decided to build my own, using **artificial intelligence as a development assistant** to speed up the process.
-
-## ✨ Features
-
-- ⏱️ **Pomodoro Timer** — Configurable Focus, Short Break, and Long Break
-- 🧠 **Hyperfocus Mode** — When enabled, the timer won't interrupt your focus when a Pomodoro ends. The counter keeps running until you feel tired and decide to start your break manually
-- 📊 **Statistics Heatmap** — Visualize your productivity GitHub/YeolPumTa style
-- 🔐 **Google Login** — OAuth authentication (optional)
-- ☁️ **Cloud Sync** — Your data follows you across devices
-- 📱 **PWA** — Installable on mobile and desktop, works offline
-- 🎨 **Customizable Colors** — Personalize colors for each mode
-- 🔊 **Configurable Alarms** — Choose sound and volume
-- 🌙 **Dark Interface** — Modern, minimalist design
-
-## 🛠️ Tech Stack
-
-| Category | Technology |
+| Area | Tool |
 |---|---|
-| Framework | [Next.js 16](https://nextjs.org/) (App Router, Turbopack) |
-| Language | [TypeScript](https://www.typescriptlang.org/) |
-| Styling | [Tailwind CSS](https://tailwindcss.com/) |
-| UI Components | [shadcn/ui](https://ui.shadcn.com/) |
-| State | [Zustand](https://zustand.docs.pmnd.rs/) (with localStorage persistence) |
-| Auth & Database | [Supabase](https://supabase.com/) (Google OAuth + PostgreSQL) |
-| Deploy | [Vercel](https://vercel.com/) |
-| Icons | [Lucide React](https://lucide.dev/) |
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| UI | Tailwind CSS 4, shadcn/ui, Lucide |
+| State | Zustand with localStorage persistence |
+| Auth and database | Supabase (Google OAuth and PostgreSQL) |
+| Tests | Vitest and Testing Library |
+| Deployment | Vercel |
 
-## 🤖 Built with AI Assistance
+## Project structure
 
-This project was **developed with artificial intelligence assistance** as a pair programming tool. AI helped with architecture, feature implementation, debugging, and best practices — significantly accelerating development without compromising code quality.
+```
+src/
+  app/            pages (timer, dashboard, roadmap, settings, login, auth callback)
+  components/
+    timer/        timer screen, controls and greeting
+    dashboard/    heatmap and month navigation
+    settings/     one settings section per file
+    auth/         Google icon and avatar
+    ui/           shadcn/ui base components
+  data/           roadmap content
+  hooks/          React hooks (user, timer, sessions)
+  lib/            auth, sync, statistics, export, utilities
+  stores/         global state (timer and roadmap progress)
+  types/          types and default settings
+  __tests__/      tests
+supabase/         table and access policy SQL
+public/           icons, sounds, service worker and timer worker
+docs/             technical notes (how the timer clock works)
+```
 
-## 📦 Running Locally
+## Running locally
+
+Requirements: Node.js 20 or newer and pnpm.
 
 ```bash
-# Clone the repository
-git clone https://github.com/Teyfis/PomoLock.git
-cd PomoLock
-
-# Install dependencies
+git clone https://github.com/tiagoluterbach/pomolock.git
+cd pomolock
 pnpm install
-
-# Set up environment variables
-cp .env.local.example .env.local
-# Fill in your Supabase credentials
-
-# Run
+cp .env.example .env.local   # fill in your Supabase URL and anon key
 pnpm dev
 ```
 
-## 📄 License
+The app runs at `http://localhost:3000`. Without the Supabase variables the timer does not load, because the
+auth client is created on startup.
 
-This project is for personal and educational use. Feel free to get inspired!
+### Supabase
+
+1. Create a Supabase project and copy its URL and `anon` key into `.env.local`.
+2. Run [`supabase/migration.sql`](./supabase/migration.sql) in the SQL Editor.
+3. Under Authentication > Providers, enable Google with your Google Cloud OAuth credentials.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `pnpm dev` | development server |
+| `pnpm build` | production build |
+| `pnpm lint` | ESLint |
+| `pnpm test` | tests in watch mode |
+| `pnpm test:run` | run tests once |
+
+## About development
+
+This project was built with AI as a pair programmer, used for architecture, implementation, debugging and
+code review.
+
+## License
+
+Personal and educational use. Feel free to take inspiration from it.
 
 ---
 
-<div align="center">
-
-Developed by **Tiago Luterbach** — Computer Science Student at UFF
-
-</div>
+Built by **Tiago Luterbach**, Computer Science student at UFF.

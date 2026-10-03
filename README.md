@@ -1,80 +1,102 @@
-<div align="center">
+# PomoLock
 
-# 🍅 PomoLock
+Timer Pomodoro com modo hyperfocus, heatmap de estudos, roadmap de Ciência de Dados e sincronização entre dispositivos.
 
-**Um timer Pomodoro moderno com modo hyperfocus, estatísticas visuais e sincronização na nuvem.**
+**[pomolock.vercel.app](https://pomolock.vercel.app)** · [English version](./README.en.md)
 
-🌐 **[Acessar o PomoLock](https://pomolock.vercel.app)**
+## Por que existe
 
-*[🇺🇸 English version](./README.en.md)*
+Eu queria um Pomodoro simples que mostrasse a minha constância como um habit tracker, no estilo do
+[YeolPumTa (열품타)](https://play.google.com/store/apps/details?id=com.pallo.passiontimerscoped), e que
+funcionasse igual no computador de casa e no da faculdade. Como não achei nada assim, construí o meu.
 
-</div>
+## Funcionalidades
 
----
+- **Timer Pomodoro** com foco, pausa curta e pausa longa configuráveis.
+- **Hyperfocus**: quando ativado, o timer não interrompe o foco no fim do Pomodoro. O tempo extra continua
+  contando até você decidir fazer a pausa.
+- **Estatísticas**: heatmap mensal com as horas estudadas por dia e sequência de dias seguidos.
+- **Roadmap**: checklist das áreas de Ciência de Dados (Python, SQL, Estatística, Machine Learning...) com
+  progresso por área.
+- **Saudação diária**: uma mensagem com o seu nome na primeira visita do dia, que some ao começar o timer.
+- **Login com Google (opcional)** e sincronização das configurações e sessões na nuvem.
+- **Funciona offline e é instalável (PWA)**. Sessões feitas offline são enviadas quando a conexão volta.
+- **Alarmes e cores personalizáveis** e exportação dos dados em JSON.
 
-## 💡 Motivação
+## Tecnologias
 
-Eu queria um aplicativo Pomodoro simples, mas que tivesse algo que a maioria não tem: **estatísticas visuais no estilo habit tracker**, inspiradas no app [YeolPumTa (열품타)](https://play.google.com/store/apps/details?id=com.pallo.passiontimerscoped&hl=pt_BR), um aplicativo coreano de estudos. A ideia era poder visualizar meu progresso diário em um **heatmap** — parecido com o gráfico de contribuições do GitHub — para me motivar a manter a consistência nos estudos.
-
-Outro ponto essencial era a **sincronização entre dispositivos**: eu queria acessar minhas estatísticas tanto no meu computador pessoal quanto no computador da faculdade, sem perder nenhum dado. Por isso, o PomoLock conta com login via Google e armazenamento na nuvem, garantindo que tudo esteja sempre atualizado independente de onde eu acesse.
-
-Como não encontrei nada que atendesse exatamente o que eu queria, resolvi construir o meu próprio, utilizando **inteligência artificial como assistente de desenvolvimento** para acelerar o processo.
-
-## ✨ Funcionalidades
-
-- ⏱️ **Timer Pomodoro** — Focus, Short Break e Long Break configuráveis
-- 🧠 **Modo Hyperfocus** — Quando ativado, o timer não interrompe seu foco ao final de um Pomodoro. O contador continua rodando até que você se sinta cansado e decida iniciar a pausa manualmente
-- 📊 **Heatmap de estatísticas** — Visualize sua produtividade no estilo GitHub/YeolPumTa
-- 🔐 **Login com Google** — Autenticação via OAuth (opcional)
-- ☁️ **Sincronização na nuvem** — Seus dados acompanham você em qualquer dispositivo
-- 📱 **PWA** — Instalável no celular e desktop, funciona offline
-- 🎨 **Cores personalizáveis** — Customize as cores de cada modo
-- 🔊 **Alarmes configuráveis** — Escolha o som e volume do alarme
-- 🌙 **Interface dark** — Design moderno e minimalista
-
-## 🛠️ Tecnologias
-
-| Categoria | Tecnologia |
+| Área | Ferramenta |
 |---|---|
-| Framework | [Next.js 16](https://nextjs.org/) (App Router, Turbopack) |
-| Linguagem | [TypeScript](https://www.typescriptlang.org/) |
-| Estilização | [Tailwind CSS](https://tailwindcss.com/) |
-| UI Components | [shadcn/ui](https://ui.shadcn.com/) |
-| Estado | [Zustand](https://zustand.docs.pmnd.rs/) (com persistência em localStorage) |
-| Auth & Database | [Supabase](https://supabase.com/) (Google OAuth + PostgreSQL) |
-| Deploy | [Vercel](https://vercel.com/) |
-| Ícones | [Lucide React](https://lucide.dev/) |
+| Framework | Next.js 16 (App Router) |
+| Linguagem | TypeScript |
+| Interface | Tailwind CSS 4, shadcn/ui, Lucide |
+| Estado | Zustand com persistência em localStorage |
+| Autenticação e banco | Supabase (Google OAuth e PostgreSQL) |
+| Testes | Vitest e Testing Library |
+| Deploy | Vercel |
 
-## 🤖 Construído com auxílio de IA
+## Estrutura
 
-Este projeto foi **desenvolvido com assistência de inteligência artificial** como ferramenta de pair programming. A IA ajudou na arquitetura, implementação de funcionalidades, debugging e boas práticas — acelerando significativamente o desenvolvimento sem comprometer a qualidade do código.
+```
+src/
+  app/            páginas (timer, dashboard, roadmap, settings, login, callback de auth)
+  components/
+    timer/        tela do timer, controles e saudação
+    dashboard/    heatmap e navegação por mês
+    settings/     uma seção da página de configurações por arquivo
+    auth/         ícone do Google e avatar
+    ui/           componentes base do shadcn/ui
+  data/           conteúdo do roadmap
+  hooks/          hooks de React (usuário, timer, sessões)
+  lib/            auth, sincronização, estatísticas, exportação, utilitários
+  stores/         estado global (timer e progresso do roadmap)
+  types/          tipos e configurações padrão
+  __tests__/      testes
+supabase/         SQL das tabelas e políticas de acesso
+public/           ícones, sons, service worker e worker do timer
+docs/             notas técnicas (como o relógio do timer funciona)
+```
 
-## 📦 Rodando localmente
+## Rodando localmente
+
+Requisitos: Node.js 20 ou mais recente e pnpm.
 
 ```bash
-# Clonar o repositório
-git clone https://github.com/Teyfis/PomoLock.git
-cd PomoLock
-
-# Instalar dependências
+git clone https://github.com/tiagoluterbach/pomolock.git
+cd pomolock
 pnpm install
-
-# Configurar variáveis de ambiente
-cp .env.local.example .env.local
-# Preencha com suas credenciais do Supabase
-
-# Rodar
+cp .env.example .env.local   # preencha com a URL e a chave anon do Supabase
 pnpm dev
 ```
 
-## 📄 Licença
+O app abre em `http://localhost:3000`. Sem as variáveis do Supabase o timer não carrega, porque o cliente de
+autenticação é criado na inicialização.
 
-Este projeto é de uso pessoal e educacional. Sinta-se à vontade para se inspirar!
+### Supabase
+
+1. Crie um projeto no Supabase e copie a URL e a chave `anon` para o `.env.local`.
+2. Rode o conteúdo de [`supabase/migration.sql`](./supabase/migration.sql) no SQL Editor.
+3. Em Authentication > Providers, ative o Google com as credenciais OAuth do Google Cloud.
+
+## Scripts
+
+| Comando | O que faz |
+|---|---|
+| `pnpm dev` | servidor de desenvolvimento |
+| `pnpm build` | build de produção |
+| `pnpm lint` | ESLint |
+| `pnpm test` | testes em modo watch |
+| `pnpm test:run` | testes uma vez |
+
+## Sobre o desenvolvimento
+
+O projeto foi desenvolvido com IA como par de programação, usada para arquitetura, implementação, depuração e
+revisão de código.
+
+## Licença
+
+Uso pessoal e educacional. Fique à vontade para se inspirar.
 
 ---
 
-<div align="center">
-
-Desenvolvido por **Tiago Luterbach** — Estudante de Ciência da Computação na UFF
-
-</div>
+Desenvolvido por **Tiago Luterbach**, estudante de Ciência da Computação na UFF.
