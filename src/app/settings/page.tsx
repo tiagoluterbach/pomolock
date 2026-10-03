@@ -38,6 +38,21 @@ function getLocalISOString(date: Date) {
         ':' + pad(tzOffset % 60)
 }
 
+type DurationField =
+    | 'focusDuration'
+    | 'shortBreakDuration'
+    | 'longBreakDuration'
+    | 'pomodorosUntilLongBreak'
+
+function toDurationInputs(settings: AppSettings): Record<DurationField, string> {
+    return {
+        focusDuration: String(settings.focusDuration),
+        shortBreakDuration: String(settings.shortBreakDuration),
+        longBreakDuration: String(settings.longBreakDuration),
+        pomodorosUntilLongBreak: String(settings.pomodorosUntilLongBreak),
+    }
+}
+
 export default function SettingsPage() {
     const { user, loading: userLoading } = useUser()
     const settings = useTimerStore((s) => s.settings)
@@ -67,14 +82,34 @@ export default function SettingsPage() {
         return Array.from(months).sort().reverse()
     }, [allSessions])
 
+    const [draftInputs, setDraftInputs] = useState<Record<DurationField, string>>(() =>
+        toDurationInputs(settings)
+    )
+
     // Sync draft when store settings change externally
     useEffect(() => {
         setDraft(settings)
+        setDraftInputs(toDurationInputs(settings))
     }, [settings])
 
     const update = (newSettings: AppSettings) => {
         setDraft(newSettings)
         updateSettings(newSettings)
+    }
+
+    const handleDurationChange = (field: DurationField, rawValue: string) => {
+        setDraftInputs((prev) => ({ ...prev, [field]: rawValue }))
+        const num = Number(rawValue)
+        if (rawValue !== '' && !isNaN(num) && num >= 1) {
+            update({ ...draft, [field]: num })
+        }
+    }
+
+    // Restore the last valid value if the field is left empty
+    const handleDurationBlur = (field: DurationField) => {
+        if (draftInputs[field] === '') {
+            setDraftInputs((prev) => ({ ...prev, [field]: String(draft[field]) }))
+        }
     }
 
     const handleGoogleLogin = async () => {
@@ -225,12 +260,16 @@ export default function SettingsPage() {
                                     type="number"
                                     min={1}
                                     max={120}
-                                    value={draft.focusDuration}
+                                    value={draftInputs.focusDuration}
                                     onChange={(e) =>
-                                        update({ ...draft, focusDuration: +e.target.value || 1 })
+                                        handleDurationChange('focusDuration', e.target.value)
                                     }
+                                    onBlur={() => handleDurationBlur('focusDuration')}
                                     className="bg-zinc-800 border-zinc-700 text-white h-9 text-center"
                                 />
+                                {draftInputs.focusDuration === '' && (
+                                    <p className="text-[11px] text-red-500 mt-1">Required</p>
+                                )}
                             </div>
                             <div>
                                 <Label className="text-xs text-zinc-500">Short Break</Label>
@@ -238,12 +277,16 @@ export default function SettingsPage() {
                                     type="number"
                                     min={1}
                                     max={60}
-                                    value={draft.shortBreakDuration}
+                                    value={draftInputs.shortBreakDuration}
                                     onChange={(e) =>
-                                        update({ ...draft, shortBreakDuration: +e.target.value || 1 })
+                                        handleDurationChange('shortBreakDuration', e.target.value)
                                     }
+                                    onBlur={() => handleDurationBlur('shortBreakDuration')}
                                     className="bg-zinc-800 border-zinc-700 text-white h-9 text-center"
                                 />
+                                {draftInputs.shortBreakDuration === '' && (
+                                    <p className="text-[11px] text-red-500 mt-1">Required</p>
+                                )}
                             </div>
                             <div>
                                 <Label className="text-xs text-zinc-500">Long Break</Label>
@@ -251,12 +294,16 @@ export default function SettingsPage() {
                                     type="number"
                                     min={1}
                                     max={60}
-                                    value={draft.longBreakDuration}
+                                    value={draftInputs.longBreakDuration}
                                     onChange={(e) =>
-                                        update({ ...draft, longBreakDuration: +e.target.value || 1 })
+                                        handleDurationChange('longBreakDuration', e.target.value)
                                     }
+                                    onBlur={() => handleDurationBlur('longBreakDuration')}
                                     className="bg-zinc-800 border-zinc-700 text-white h-9 text-center"
                                 />
+                                {draftInputs.longBreakDuration === '' && (
+                                    <p className="text-[11px] text-red-500 mt-1">Required</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -269,12 +316,16 @@ export default function SettingsPage() {
                             type="number"
                             min={1}
                             max={12}
-                            value={draft.pomodorosUntilLongBreak}
+                            value={draftInputs.pomodorosUntilLongBreak}
                             onChange={(e) =>
-                                update({ ...draft, pomodorosUntilLongBreak: +e.target.value || 1 })
+                                handleDurationChange('pomodorosUntilLongBreak', e.target.value)
                             }
+                            onBlur={() => handleDurationBlur('pomodorosUntilLongBreak')}
                             className="bg-zinc-800 border-zinc-700 text-white h-9 w-20 text-center"
                         />
+                        {draftInputs.pomodorosUntilLongBreak === '' && (
+                            <p className="text-[11px] text-red-500 mt-1">Required</p>
+                        )}
                     </div>
                 </section>
 

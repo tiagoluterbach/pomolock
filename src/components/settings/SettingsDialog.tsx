@@ -65,6 +65,13 @@ export function SettingsDialog() {
         }
     }
 
+    // Restore the last valid value if the field is left empty
+    const handleDurationBlur = (field: DurationField) => {
+        if (draftInputs[field] === '') {
+            setDraftInputs((prev) => ({ ...prev, [field]: String(draft[field]) }))
+        }
+    }
+
     const handleClose = () => {
         setOpen(false)
     }
@@ -101,6 +108,7 @@ export function SettingsDialog() {
                                     onChange={(e) =>
                                         handleDurationChange('focusDuration', e.target.value)
                                     }
+                                    onBlur={() => handleDurationBlur('focusDuration')}
                                     className="bg-zinc-800 border-zinc-700 text-white h-9 text-center"
                                 />
                                 {draftInputs.focusDuration === '' && (
@@ -117,6 +125,7 @@ export function SettingsDialog() {
                                     onChange={(e) =>
                                         handleDurationChange('shortBreakDuration', e.target.value)
                                     }
+                                    onBlur={() => handleDurationBlur('shortBreakDuration')}
                                     className="bg-zinc-800 border-zinc-700 text-white h-9 text-center"
                                 />
                                 {draftInputs.shortBreakDuration === '' && (
@@ -133,6 +142,7 @@ export function SettingsDialog() {
                                     onChange={(e) =>
                                         handleDurationChange('longBreakDuration', e.target.value)
                                     }
+                                    onBlur={() => handleDurationBlur('longBreakDuration')}
                                     className="bg-zinc-800 border-zinc-700 text-white h-9 text-center"
                                 />
                                 {draftInputs.longBreakDuration === '' && (
@@ -152,6 +162,7 @@ export function SettingsDialog() {
                                 onChange={(e) =>
                                     handleDurationChange('pomodorosUntilLongBreak', e.target.value)
                                 }
+                                onBlur={() => handleDurationBlur('pomodorosUntilLongBreak')}
                                 className="bg-zinc-800 border-zinc-700 text-white h-9 w-20 text-center"
                             />
                             {draftInputs.pomodorosUntilLongBreak === '' && (
