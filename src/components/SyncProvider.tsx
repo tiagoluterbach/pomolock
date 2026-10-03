@@ -3,22 +3,42 @@
 import { useEffect, useRef } from 'react'
 import { useUser } from '@/hooks/useUser'
 import { useTimerStore } from '@/stores/timerStore'
-import { syncOnLogin, pushSettingsToCloud, pushPendingSessions, fetchCloudSessions } from '@/lib/syncController'
+import {
+    syncOnLogin,
+    pushSettingsToCloud,
+    pushSessionsToCloud,
+    fetchCloudSessions,
+    onReconnect,
+} from '@/lib/syncController'
+
+/**
+ * Push every pending session in one request and move the synced ones into
+ * cloudSessions so the dashboard reflects them immediately.
+ */
+async function flushPendingSessions() {
+    const { pendingSessions } = useTimerStore.getState()
+    if (pendingSessions.length === 0) return
+
+    const syncedIds = await pushSessionsToCloud(pendingSessions)
+    if (syncedIds.length === 0) return
+
+    const { cloudSessions, removeSyncedSessions, setCloudSessions } = useTimerStore.getState()
+    const known = new Set(cloudSessions.map((s) => s.id))
+    const synced = pendingSessions.filter((s) => syncedIds.includes(s.id) && !known.has(s.id))
+    removeSyncedSessions(syncedIds)
+    setCloudSessions([...cloudSessions, ...synced])
+}
 
 /**
  * SyncProvider - handles bidirectional sync between localStorage and Supabase.
- * 
+ *
  * On login: pulls cloud settings, pushes pending sessions, and prefetches cloud sessions.
- * On session complete: pushes new sessions to cloud immediately (debounced).
+ * On new session or reconnect: pushes pending sessions (debounced).
  * On settings change: pushes settings to cloud (debounced).
  */
 export function SyncProvider() {
     const { user } = useUser()
     const hasSyncedRef = useRef(false)
-    const debounceRef = useRef<NodeJS.Timeout | null>(null)
-    const sessionDebounceRef = useRef<NodeJS.Timeout | null>(null)
-    const prevSettingsRef = useRef<string>('')
-    const prevPendingCountRef = useRef<number>(0)
 
     // Sync on login
     useEffect(() => {
@@ -26,25 +46,12 @@ export function SyncProvider() {
         hasSyncedRef.current = true
 
         const { settings, pendingSessions, replaceSettings, removeSyncedSessions, setCloudSessions } = useTimerStore.getState()
-        prevPendingCountRef.current = pendingSessions.length
 
-        syncOnLogin(
-            settings,
-            pendingSessions,
-            (mergedSettings) => {
-                replaceSettings(mergedSettings)
-            },
-            (syncedIds) => {
-                removeSyncedSessions(syncedIds)
-            },
-        ).then(() => {
+        syncOnLogin(settings, pendingSessions, replaceSettings, removeSyncedSessions)
             // After sync, prefetch all cloud sessions for the dashboard
-            return fetchCloudSessions()
-        }).then((sessions) => {
-            setCloudSessions(sessions)
-            // Update count after initial sync
-            prevPendingCountRef.current = useTimerStore.getState().pendingSessions.length
-        }).catch(console.error)
+            .then(() => fetchCloudSessions())
+            .then(setCloudSessions)
+            .catch(console.error)
     }, [user])
 
     // Reset sync flag on logout
@@ -54,73 +61,50 @@ export function SyncProvider() {
         }
     }, [user])
 
-    // Push new sessions to cloud in real-time (debounced)
+    // Push pending sessions when one is added or the connection comes back.
+    // Failed pushes stay pending and are retried on the next trigger.
     useEffect(() => {
         if (!user) return
 
-        const unsub = useTimerStore.subscribe((state) => {
-            const currentCount = state.pendingSessions.length
+        let timeout: ReturnType<typeof setTimeout> | undefined
+        const schedule = () => {
+            clearTimeout(timeout)
+            // Wait 1 second to batch rapid additions
+            timeout = setTimeout(() => {
+                flushPendingSessions().catch((err) => console.error('Failed to push sessions to cloud:', err))
+            }, 1000)
+        }
 
-            // Only trigger when new sessions are added (count increased)
-            if (currentCount > prevPendingCountRef.current) {
-                prevPendingCountRef.current = currentCount
-
-                // Debounce to batch rapid session additions
-                if (sessionDebounceRef.current) clearTimeout(sessionDebounceRef.current)
-                sessionDebounceRef.current = setTimeout(async () => {
-                    try {
-                        const { pendingSessions, removeSyncedSessions, cloudSessions, setCloudSessions } = useTimerStore.getState()
-                        if (pendingSessions.length === 0) return
-
-                        const syncedIds = await pushPendingSessions(pendingSessions)
-                        if (syncedIds.length > 0) {
-                            // Get the sessions that were just synced to add to cloudSessions
-                            const syncedSessions = pendingSessions.filter(s => syncedIds.includes(s.id))
-                            removeSyncedSessions(syncedIds)
-                            // Update cloudSessions so dashboard reflects them immediately
-                            setCloudSessions([...cloudSessions, ...syncedSessions])
-                            prevPendingCountRef.current = useTimerStore.getState().pendingSessions.length
-                        }
-                    } catch (err) {
-                        console.error('Failed to push sessions to cloud:', err)
-                    }
-                }, 1000) // Wait 1 second to batch
-            } else {
-                // Count decreased (sessions were removed after sync), update ref
-                prevPendingCountRef.current = currentCount
-            }
+        const unsub = useTimerStore.subscribe((state, prev) => {
+            if (state.pendingSessions.length > prev.pendingSessions.length) schedule()
         })
+        const stopListening = onReconnect(schedule)
 
         return () => {
             unsub()
-            if (sessionDebounceRef.current) clearTimeout(sessionDebounceRef.current)
+            stopListening()
+            clearTimeout(timeout)
         }
     }, [user])
 
-    // Push settings to cloud on change (debounced)
-    // Uses a polling approach to detect settings changes
+    // Push settings to cloud on change (debounced). The store replaces the
+    // settings object on every change, so a reference check is enough.
     useEffect(() => {
         if (!user) return
 
-        // Store initial settings hash
-        prevSettingsRef.current = JSON.stringify(useTimerStore.getState().settings)
-
-        const unsub = useTimerStore.subscribe((state) => {
-            const currentHash = JSON.stringify(state.settings)
-            if (currentHash !== prevSettingsRef.current) {
-                prevSettingsRef.current = currentHash
-
-                // Debounce to avoid pushing on every keystroke
-                if (debounceRef.current) clearTimeout(debounceRef.current)
-                debounceRef.current = setTimeout(() => {
-                    pushSettingsToCloud(state.settings).catch(console.error)
-                }, 2000) // Wait 2 seconds after last change
-            }
+        let timeout: ReturnType<typeof setTimeout> | undefined
+        const unsub = useTimerStore.subscribe((state, prev) => {
+            if (state.settings === prev.settings) return
+            clearTimeout(timeout)
+            // Wait 2 seconds after the last change
+            timeout = setTimeout(() => {
+                pushSettingsToCloud(useTimerStore.getState().settings).catch(console.error)
+            }, 2000)
         })
 
         return () => {
             unsub()
-            if (debounceRef.current) clearTimeout(debounceRef.current)
+            clearTimeout(timeout)
         }
     }, [user])
 

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { AppSettings, FocusSession } from '@/types'
+import { useTimerStore } from '@/stores/timerStore'
 
 // ==========================================
 // Sync Controller
@@ -45,28 +46,34 @@ export async function pushSettingsToCloud(settings: AppSettings): Promise<boolea
 }
 
 /**
- * Push a single focus session to Supabase.
- * Returns true if successful.
+ * Push focus sessions to Supabase in a single request.
+ * Sessions never change after being saved, so rows that already exist are
+ * skipped (this also makes retries safe). Returns the IDs that are now synced.
  */
-export async function pushSessionToCloud(session: FocusSession): Promise<boolean> {
+export async function pushSessionsToCloud(sessions: FocusSession[]): Promise<string[]> {
+    if (sessions.length === 0) return []
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
+    if (!user) return []
 
     const { error } = await supabase
         .from('focus_sessions')
-        .upsert({
-            id: session.id,
-            user_id: user.id,
-            started_at: session.startedAt,
-            duration_minutes: session.durationMinutes,
-            actual_duration_seconds: session.actualDurationSeconds,
-            hyperfocus_seconds: session.hyperfocusSeconds,
-            completed: session.completed,
-            created_at: session.createdAt,
-        })
+        .upsert(
+            sessions.map((session) => ({
+                id: session.id,
+                user_id: user.id,
+                started_at: session.startedAt,
+                duration_minutes: session.durationMinutes,
+                actual_duration_seconds: session.actualDurationSeconds,
+                hyperfocus_seconds: session.hyperfocusSeconds,
+                completed: session.completed,
+                created_at: session.createdAt,
+            })),
+            { onConflict: 'id', ignoreDuplicates: true },
+        )
 
-    return !error
+    return error ? [] : sessions.map((session) => session.id)
 }
 
 /**
@@ -116,20 +123,26 @@ export async function deleteCloudSessions(): Promise<boolean> {
 }
 
 /**
- * Push all pending sessions to Supabase.
- * Returns the IDs of sessions that were successfully synced.
+ * Reset statistics everywhere: cloud sessions first (when logged in), then the
+ * local counters and sessions. Settings and the current timer are kept.
+ * Returns false (and changes nothing locally) if the cloud delete fails.
  */
-export async function pushPendingSessions(sessions: FocusSession[]): Promise<string[]> {
-    const syncedIds: string[] = []
+export async function resetStatistics(): Promise<boolean> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    for (const session of sessions) {
-        const success = await pushSessionToCloud(session)
-        if (success) {
-            syncedIds.push(session.id)
-        }
+    if (user && !(await deleteCloudSessions())) return false
+
+    useTimerStore.getState().resetStats()
+    return true
+}
+
+/** "Reset Statistics" button handler: confirm, reset, and report failures. */
+export async function confirmAndResetStatistics() {
+    if (!window.confirm('Are you sure you want to reset all statistics? This cannot be undone.')) return
+    if (!(await resetStatistics())) {
+        window.alert('Could not delete your synced sessions. Check your connection and try again.')
     }
-
-    return syncedIds
 }
 
 /**
@@ -163,18 +176,11 @@ export async function syncOnLogin(
 
     // 2. Push pending sessions
     if (pendingSessions.length > 0) {
-        const syncedIds = await pushPendingSessions(pendingSessions)
+        const syncedIds = await pushSessionsToCloud(pendingSessions)
         if (syncedIds.length > 0) {
             onSessionsSynced(syncedIds)
         }
     }
-}
-
-/**
- * Check if the user is online.
- */
-export function isOnline(): boolean {
-    return typeof navigator !== 'undefined' ? navigator.onLine : true
 }
 
 /**

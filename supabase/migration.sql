@@ -42,6 +42,10 @@ CREATE POLICY "Users can read own sessions" ON public.focus_sessions
 CREATE POLICY "Users can insert own sessions" ON public.focus_sessions
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+-- Needed by "Reset Statistics": without it RLS silently deletes nothing
+CREATE POLICY "Users can delete own sessions" ON public.focus_sessions
+    FOR DELETE USING (auth.uid() = user_id);
+
 -- Index for querying sessions by user and date range
 CREATE INDEX IF NOT EXISTS idx_focus_sessions_user_started
     ON public.focus_sessions(user_id, started_at DESC);
