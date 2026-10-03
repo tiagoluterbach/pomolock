@@ -31,7 +31,6 @@ export interface AppSettings extends TimerSettings {
     showTimerInTitle: boolean
     alarmRepeatCount: number
     alarmSound: 'bip' | 'kazakhstan'
-    displayName: string // greeting name; empty falls back to the Google first name
 }
 
 export const ALARM_FILES: Record<AppSettings['alarmSound'], string> = {
@@ -59,7 +58,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     showTimerInTitle: true,
     alarmRepeatCount: 3,
     alarmSound: 'bip',
-    displayName: '',
 }
 
 // ==========================================

@@ -18,7 +18,6 @@ worked the same on my home computer and at university. I could not find one, so 
 - **Statistics**: a monthly heatmap of hours studied per day and a day streak.
 - **Roadmap**: a checklist of Data Science areas (Python, SQL, Statistics, Machine Learning...) with progress
   per area.
-- **Daily greeting**: a message with your name on the first visit of the day, gone once the timer starts.
 - **Optional Google sign-in** with settings and sessions synced to the cloud.
 - **Works offline and installs as a PWA**. Sessions recorded offline are uploaded when the connection returns.
 - **Custom alarms and colors**, plus JSON data export.
@@ -41,7 +40,7 @@ worked the same on my home computer and at university. I could not find one, so 
 src/
   app/            pages (timer, dashboard, roadmap, settings, login, auth callback)
   components/
-    timer/        timer screen, controls and greeting
+    timer/        timer screen and controls
     dashboard/    heatmap and month navigation
     settings/     one settings section per file
     auth/         Google icon and avatar

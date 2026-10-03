@@ -5,7 +5,6 @@ import { useTimer } from '@/hooks/useTimer'
 import { ModeSelector } from './ModeSelector'
 import { TimerDisplay } from './TimerDisplay'
 import { TimerControls } from './TimerControls'
-import { Greeting } from './Greeting'
 import { BarChart3, Hourglass } from 'lucide-react'
 import Link from 'next/link'
 
@@ -59,11 +58,6 @@ export function Timer() {
                     PomoLock
                 </h1>
             </header>
-
-            {/* Study-partner greeting */}
-            <div className="w-full max-w-md">
-                <Greeting accentColor={accentColor} />
-            </div>
 
             {/* Mode selector */}
             <div className="w-full max-w-md mb-6">

@@ -18,7 +18,6 @@ funcionasse igual no computador de casa e no da faculdade. Como não achei nada 
 - **Estatísticas**: heatmap mensal com as horas estudadas por dia e sequência de dias seguidos.
 - **Roadmap**: checklist das áreas de Ciência de Dados (Python, SQL, Estatística, Machine Learning...) com
   progresso por área.
-- **Saudação diária**: uma mensagem com o seu nome na primeira visita do dia, que some ao começar o timer.
 - **Login com Google (opcional)** e sincronização das configurações e sessões na nuvem.
 - **Funciona offline e é instalável (PWA)**. Sessões feitas offline são enviadas quando a conexão volta.
 - **Alarmes e cores personalizáveis** e exportação dos dados em JSON.
@@ -41,7 +40,7 @@ funcionasse igual no computador de casa e no da faculdade. Como não achei nada 
 src/
   app/            páginas (timer, dashboard, roadmap, settings, login, callback de auth)
   components/
-    timer/        tela do timer, controles e saudação
+    timer/        tela do timer e controles
     dashboard/    heatmap e navegação por mês
     settings/     uma seção da página de configurações por arquivo
     auth/         ícone do Google e avatar
