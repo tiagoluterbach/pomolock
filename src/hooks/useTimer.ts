@@ -1,6 +1,14 @@
-import { useCallback } from 'react'
-import { useTimerStore } from '@/stores/timerStore'
+import { useTimerStore, getDurationForMode } from '@/stores/timerStore'
+import { formatClock, getLocalDateString } from '@/lib/utils'
+import type { TimerMode } from '@/types'
 
+const MODE_LABELS: Record<TimerMode, string> = {
+    focus: 'Pomodoro',
+    shortBreak: 'Short Break',
+    longBreak: 'Long Break',
+}
+
+/** Timer state and actions, plus the derived values the timer screen displays. */
 export function useTimer() {
     const {
         mode,
@@ -12,64 +20,26 @@ export function useTimer() {
         hyperfocusEnabled,
         settings,
         start,
-        pause: storePause,
+        pause,
         reset,
         skip,
         toggleHyperfocus,
         setMode,
     } = useTimerStore()
 
-    // Compute daily pomodoro count
-    const today = (() => {
-        const now = new Date()
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    })()
-    const dailyPomodoros = lastPomodoroDate === today ? completedPomodoros : 0
+    const dailyPomodoros = lastPomodoroDate === getLocalDateString() ? completedPomodoros : 0
 
-    const handlePause = useCallback(() => {
-        storePause()
-    }, [storePause])
+    const isHyperfocusPaused =
+        status === 'paused' && mode === 'focus' && secondsRemaining === 0 && hyperfocusEnabled
+    const showHyperfocus = status === 'hyperfocus' || isHyperfocusPaused
 
-    const formatTime = (seconds: number) => {
-        const m = Math.floor(seconds / 60)
-        const s = seconds % 60
-        return `${m}:${s.toString().padStart(2, '0')}`
-    }
+    const total = getDurationForMode(mode, settings)
+    const progress = showHyperfocus ? 1 : total === 0 ? 0 : secondsRemaining / total
 
-    const isHyperfocusPaused = useCallback(() => {
-        return status === 'paused' && mode === 'focus' && secondsRemaining === 0 && hyperfocusEnabled
-    }, [status, mode, secondsRemaining, hyperfocusEnabled])
-
-    const displaySeconds = status === 'hyperfocus' || isHyperfocusPaused() ? hyperfocusSeconds : secondsRemaining
-
-    const getAccentColor = useCallback(() => {
-        if (status === 'hyperfocus' || isHyperfocusPaused()) return settings.modeColors.hyperfocus
-        return settings.modeColors[mode]
-    }, [settings, mode, status, isHyperfocusPaused])
-
-    const getModeLabel = useCallback(() => {
-        if (status === 'hyperfocus') return 'Hyperfocus'
-        if (isHyperfocusPaused()) return 'Hyperfocus Paused'
-
-        switch (mode) {
-            case 'focus': return 'Pomodoro'
-            case 'shortBreak': return 'Short Break'
-            case 'longBreak': return 'Long Break'
-        }
-    }, [mode, status, isHyperfocusPaused])
-
-    const getProgress = useCallback(() => {
-        if (status === 'hyperfocus' || isHyperfocusPaused()) return 1
-        const total = (() => {
-            switch (mode) {
-                case 'focus': return settings.focusDuration * 60
-                case 'shortBreak': return settings.shortBreakDuration * 60
-                case 'longBreak': return settings.longBreakDuration * 60
-            }
-        })()
-        if (total === 0) return 0
-        return secondsRemaining / total
-    }, [mode, status, secondsRemaining, settings])
+    const modeLabel =
+        status === 'hyperfocus' ? 'Hyperfocus'
+            : isHyperfocusPaused ? 'Hyperfocus Paused'
+                : MODE_LABELS[mode]
 
     return {
         mode,
@@ -79,12 +49,12 @@ export function useTimer() {
         completedPomodoros: dailyPomodoros,
         hyperfocusEnabled,
         settings,
-        formattedTime: formatTime(displaySeconds),
-        accentColor: getAccentColor(),
-        modeLabel: getModeLabel(),
-        progress: getProgress(),
+        formattedTime: formatClock(showHyperfocus ? hyperfocusSeconds : secondsRemaining),
+        accentColor: showHyperfocus ? settings.modeColors.hyperfocus : settings.modeColors[mode],
+        modeLabel,
+        progress,
         start,
-        pause: handlePause,
+        pause,
         reset,
         skip,
         toggleHyperfocus,

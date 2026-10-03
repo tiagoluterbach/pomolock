@@ -3,15 +3,14 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/hooks/useUser'
-import { createClient } from '@/lib/supabase/client'
-import { deleteCloudSessions } from '@/lib/syncController'
-import { useTimerStore } from '@/stores/timerStore'
+import { signOut } from '@/lib/auth'
+import { confirmAndResetStatistics } from '@/lib/syncController'
+import { UserAvatar } from '@/components/auth/UserAvatar'
 import { BarChart3, Timer, Settings, LogIn, LogOut, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export function Navbar() {
     const { user } = useUser()
-    const resetStats = useTimerStore((s) => s.resetStats)
     const [showDropdown, setShowDropdown] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -28,22 +27,9 @@ export function Navbar() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [showDropdown])
 
-    const handleLogout = async () => {
-        const supabase = createClient()
-        await supabase.auth.signOut()
+    const handleResetStats = () => {
         setShowDropdown(false)
-        window.location.href = '/'
-    }
-
-    const handleResetStats = async () => {
-        if (window.confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
-            resetStats()
-            localStorage.removeItem('pomodoro-timer-storage')
-            // Also delete sessions from Supabase
-            await deleteCloudSessions()
-            setShowDropdown(false)
-            window.location.reload()
-        }
+        confirmAndResetStatistics()
     }
 
     // Let clicks pass through the transparent space when page content scrolls underneath.
@@ -89,17 +75,7 @@ export function Navbar() {
                             className="h-10 w-10 rounded-full flex items-center justify-center cursor-pointer transition-all hover:ring-2 hover:ring-white/20"
                             aria-label="Account menu"
                         >
-                            {user.user_metadata?.avatar_url ? (
-                                <img
-                                    src={user.user_metadata.avatar_url}
-                                    alt="Avatar"
-                                    className="h-7 w-7 rounded-full ring-2 ring-white/20"
-                                />
-                            ) : (
-                                <div className="h-7 w-7 rounded-full bg-zinc-700 flex items-center justify-center text-white font-semibold text-xs">
-                                    {(user.user_metadata?.full_name || user.email || '?')[0].toUpperCase()}
-                                </div>
-                            )}
+                            <UserAvatar user={user} className="h-7 w-7 text-xs" />
                         </button>
 
                         {/* Dropdown menu */}
@@ -126,7 +102,7 @@ export function Navbar() {
 
                                 {/* Logout */}
                                 <button
-                                    onClick={handleLogout}
+                                    onClick={() => signOut('/')}
                                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
                                 >
                                     <LogOut className="h-4 w-4" />

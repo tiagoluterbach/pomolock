@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useTimerStore } from '@/stores/timerStore'
+import { formatClock } from '@/lib/utils'
+import { ALARM_FILES, type AppSettings } from '@/types'
 
 // Request notification permission on first load
 function requestNotificationPermission() {
@@ -63,7 +65,7 @@ export function TimerRunner() {
             audioCtxRef.current = ctx
 
             // Pre-fetch and decode audio files
-            for (const file of ['/bip.mp3', '/kazakhstan.mp3']) {
+            for (const file of Object.values(ALARM_FILES)) {
                 try {
                     const response = await fetch(file)
                     const arrayBuffer = await response.arrayBuffer()
@@ -118,10 +120,10 @@ export function TimerRunner() {
     }, [status])
 
     // Helper to play alarm sound (Web Audio API — works in background tabs)
-    const playAlarm = useCallback((settings: { alarmSound: string; soundVolume: number; alarmRepeatCount: number }) => {
+    const playAlarm = useCallback((settings: Pick<AppSettings, 'alarmSound' | 'soundVolume' | 'alarmRepeatCount'>) => {
         try {
             const repeat = settings.alarmRepeatCount || 3
-            const soundFile = settings.alarmSound === 'kazakhstan' ? '/kazakhstan.mp3' : '/bip.mp3'
+            const soundFile = ALARM_FILES[settings.alarmSound] ?? ALARM_FILES.bip
             alarmCancelledRef.current = false
 
             const ctx = audioCtxRef.current
@@ -252,17 +254,11 @@ export function TimerRunner() {
             return
         }
 
-        const format = (s: number) => {
-            const m = Math.floor(s / 60)
-            const sec = s % 60
-            return `${m}:${sec.toString().padStart(2, '0')}`
-        }
-
         let title = 'PomoLock'
         if (status === 'running' || status === 'paused') {
-            title = `(${format(secondsRemaining)}) ${mode === 'focus' ? 'PomoLock' : 'Break'}`
+            title = `(${formatClock(secondsRemaining)}) ${mode === 'focus' ? 'PomoLock' : 'Break'}`
         } else if (status === 'hyperfocus') {
-            title = `(Hyper: ${format(hyperfocusSeconds)}) PomoLock`
+            title = `(Hyper: ${formatClock(hyperfocusSeconds)}) PomoLock`
         }
 
         document.title = title
