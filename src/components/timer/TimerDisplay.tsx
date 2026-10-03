@@ -6,7 +6,6 @@ interface TimerDisplayProps {
     progress: number
     accentColor: string
     isRunning: boolean
-    isHyperfocus: boolean
     onReset: () => void
 }
 
@@ -16,7 +15,6 @@ export function TimerDisplay({
     progress,
     accentColor,
     isRunning,
-    isHyperfocus,
     onReset,
 }: TimerDisplayProps) {
     // SVG circular progress — thicker ring always

@@ -5,12 +5,12 @@ import { useTimer } from '@/hooks/useTimer'
 import { ModeSelector } from './ModeSelector'
 import { TimerDisplay } from './TimerDisplay'
 import { TimerControls } from './TimerControls'
+import { Greeting } from './Greeting'
 import { BarChart3, Hourglass } from 'lucide-react'
 import Link from 'next/link'
 
 export function Timer() {
     const {
-        mode,
         status,
         completedPomodoros,
         hyperfocusEnabled,
@@ -60,6 +60,11 @@ export function Timer() {
                 </h1>
             </header>
 
+            {/* Study-partner greeting */}
+            <div className="w-full max-w-md">
+                <Greeting accentColor={accentColor} />
+            </div>
+
             {/* Mode selector */}
             <div className="w-full max-w-md mb-6">
                 <ModeSelector accentColor={accentColor} />
@@ -90,7 +95,6 @@ export function Timer() {
                     progress={progress}
                     accentColor={accentColor}
                     isRunning={status === 'running' || status === 'hyperfocus'}
-                    isHyperfocus={status === 'hyperfocus'}
                     onReset={reset}
                 />
             </div>
