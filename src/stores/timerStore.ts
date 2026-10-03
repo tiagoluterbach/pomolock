@@ -7,6 +7,7 @@ import {
     type FocusSession,
     DEFAULT_SETTINGS,
 } from '@/types'
+import { getLocalDateString } from '@/lib/utils'
 
 // Unique ID generator that works in both browser and test environments
 function generateId(): string {
@@ -38,6 +39,9 @@ interface TimerState {
     hyperfocusEnabled: boolean
     pausedFromHyperfocus: boolean
     clock: TimerClock | null
+    // Length (seconds) of the active phase, fixed when it starts so that
+    // editing settings mid-session never rewrites time already studied.
+    phaseDuration: number | null
 
     // Settings
     settings: AppSettings
@@ -59,7 +63,6 @@ interface TimerState {
     exitHyperfocus: () => void
     toggleHyperfocus: () => void
     updateSettings: (settings: Partial<AppSettings>) => void
-    setSecondsRemaining: (seconds: number) => void
     resetStats: () => void
 
     // Sync actions
@@ -99,11 +102,6 @@ export function getNextMode(
     return 'focus'
 }
 
-function getLocalDateString(): string {
-    const now = new Date()
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
 // Helper to get the correct pomodoro count, resetting if the day changed
 function getDailyPomodoros(completedPomodoros: number, lastPomodoroDate: string | null): number {
     const today = getLocalDateString()
@@ -136,6 +134,48 @@ function clockDisplay(clock: TimerClock) {
     }
 }
 
+function isActive(status: TimerStatus): boolean {
+    return status === 'running' || status === 'paused' || status === 'hyperfocus'
+}
+
+type SessionSource = Pick<
+    TimerState,
+    'mode' | 'settings' | 'secondsRemaining' | 'hyperfocusSeconds' | 'phaseDuration' | 'sessionStartedAt'
+>
+
+// Older persisted snapshots have no phaseDuration; fall back to the settings.
+function getPhaseDuration(state: SessionSource): number {
+    return state.phaseDuration ?? getDurationForMode(state.mode, state.settings)
+}
+
+function getElapsedSeconds(state: SessionSource): number {
+    return Math.round(getPhaseDuration(state) - state.secondsRemaining + state.hyperfocusSeconds)
+}
+
+function buildSession(state: SessionSource, completed: boolean): FocusSession {
+    const elapsedSeconds = getElapsedSeconds(state)
+    return {
+        id: generateId(),
+        userId: '',
+        startedAt: state.sessionStartedAt!,
+        durationMinutes: Math.floor(elapsedSeconds / 60),
+        actualDurationSeconds: elapsedSeconds,
+        hyperfocusSeconds: state.hyperfocusSeconds,
+        completed,
+        createdAt: new Date().toISOString(),
+    }
+}
+
+// Partial sessions (reset, mode switch, stale recovery) need at least 1 minute.
+function shouldSavePartialSession(state: SessionSource & Pick<TimerState, 'status'>): boolean {
+    return (
+        state.mode === 'focus' &&
+        isActive(state.status) &&
+        !!state.sessionStartedAt &&
+        getElapsedSeconds(state) >= 60
+    )
+}
+
 // ==========================================
 // Timer Store
 // ==========================================
@@ -154,6 +194,7 @@ export const useTimerStore = create<TimerState>()(
             hyperfocusEnabled: false,
             pausedFromHyperfocus: false,
             clock: null,
+            phaseDuration: null,
 
             // Settings
             settings: DEFAULT_SETTINGS,
@@ -165,37 +206,19 @@ export const useTimerStore = create<TimerState>()(
             // Actions
             setMode: (mode) => {
                 get().tick()
-                const { settings, mode: currentMode, status, secondsRemaining, hyperfocusSeconds, sessionStartedAt } = get()
+                const state = get()
 
                 // Save partial session if switching away from an active focus mode
-                if (currentMode === 'focus' && (status === 'running' || status === 'paused' || status === 'hyperfocus') && sessionStartedAt) {
-                    const totalSeconds = getDurationForMode('focus', settings)
-                    const elapsedSeconds = totalSeconds - secondsRemaining + hyperfocusSeconds
-                    const elapsedMinutes = Math.floor(elapsedSeconds / 60)
-
-                    // Only save if at least 1 minute was studied
-                    if (elapsedMinutes >= 1) {
-                        const now = new Date().toISOString()
-                        const session: FocusSession = {
-                            id: generateId(),
-                            userId: '',
-                            startedAt: sessionStartedAt,
-                            durationMinutes: elapsedMinutes,
-                            actualDurationSeconds: elapsedSeconds,
-                            hyperfocusSeconds: hyperfocusSeconds,
-                            completed: false,
-                            createdAt: now,
-                        }
-                        const { pendingSessions } = get()
-                        set({ pendingSessions: [...pendingSessions, session] })
-                    }
+                if (shouldSavePartialSession(state)) {
+                    get().addPendingSession(buildSession(state, false))
                 }
 
                 set({
                     mode,
                     status: 'idle',
                     clock: null,
-                    secondsRemaining: getDurationForMode(mode, settings),
+                    phaseDuration: null,
+                    secondsRemaining: getDurationForMode(mode, state.settings),
                     hyperfocusSeconds: 0,
                     sessionStartedAt: null,
                     pausedFromHyperfocus: false,
@@ -215,6 +238,7 @@ export const useTimerStore = create<TimerState>()(
                         status: 'running',
                         clock,
                         ...clockDisplay(clock),
+                        phaseDuration: status === 'idle' ? state.secondsRemaining : getPhaseDuration(state),
                         sessionStartedAt:
                             status === 'idle'
                                 ? new Date().toISOString()
@@ -238,36 +262,18 @@ export const useTimerStore = create<TimerState>()(
 
             reset: () => {
                 get().tick()
-                const { mode, settings, status, secondsRemaining, hyperfocusSeconds, sessionStartedAt } = get()
-                
+                const state = get()
+
                 // Save partial session if resetting during a focus mode
-                if (mode === 'focus' && (status === 'running' || status === 'paused' || status === 'hyperfocus') && sessionStartedAt) {
-                    const totalSeconds = getDurationForMode('focus', settings)
-                    const elapsedSeconds = totalSeconds - secondsRemaining + hyperfocusSeconds
-                    const elapsedMinutes = Math.floor(elapsedSeconds / 60)
-                    
-                    // Only save if at least 1 minute was studied
-                    if (elapsedMinutes >= 1) {
-                        const now = new Date().toISOString()
-                        const session: FocusSession = {
-                            id: crypto.randomUUID(),
-                            userId: '',
-                            startedAt: sessionStartedAt,
-                            durationMinutes: elapsedMinutes,
-                            actualDurationSeconds: elapsedSeconds,
-                            hyperfocusSeconds: hyperfocusSeconds,
-                            completed: false,
-                            createdAt: now,
-                        }
-                        const { pendingSessions } = get()
-                        set({ pendingSessions: [...pendingSessions, session] })
-                    }
+                if (shouldSavePartialSession(state)) {
+                    get().addPendingSession(buildSession(state, false))
                 }
-                
+
                 set({
                     status: 'idle',
                     clock: null,
-                    secondsRemaining: getDurationForMode(mode, settings),
+                    phaseDuration: null,
+                    secondsRemaining: getDurationForMode(state.mode, state.settings),
                     hyperfocusSeconds: 0,
                     sessionStartedAt: null,
                     pausedFromHyperfocus: false,
@@ -276,7 +282,8 @@ export const useTimerStore = create<TimerState>()(
 
             skip: () => {
                 get().tick()
-                const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = get()
+                const state = get()
+                const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = state
                 const dailyPomodoros = getDailyPomodoros(completedPomodoros, lastPomodoroDate)
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
                 const newPomodoros =
@@ -284,28 +291,14 @@ export const useTimerStore = create<TimerState>()(
 
                 // Save full session if skipping a focus mode
                 if (mode === 'focus' && sessionStartedAt) {
-                    const { hyperfocusSeconds, secondsRemaining } = get()
-                    const now = new Date().toISOString()
-                    const totalDuration = settings.focusDuration * 60
-                    const elapsedSeconds = totalDuration - secondsRemaining + hyperfocusSeconds
-                    const session: FocusSession = {
-                        id: crypto.randomUUID(),
-                        userId: '',
-                        startedAt: sessionStartedAt,
-                        durationMinutes: Math.floor(elapsedSeconds / 60),
-                        actualDurationSeconds: elapsedSeconds,
-                        hyperfocusSeconds: hyperfocusSeconds,
-                        completed: false,
-                        createdAt: now,
-                    }
-                    const { pendingSessions } = get()
-                    set({ pendingSessions: [...pendingSessions, session] })
+                    get().addPendingSession(buildSession(state, false))
                 }
 
                 set({
                     mode: nextMode,
                     status: 'idle',
                     clock: null,
+                    phaseDuration: null,
                     secondsRemaining: getDurationForMode(nextMode, settings),
                     hyperfocusSeconds: 0,
                     completedPomodoros: newPomodoros,
@@ -316,33 +309,21 @@ export const useTimerStore = create<TimerState>()(
             },
 
             complete: () => {
-                const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate, hyperfocusSeconds, secondsRemaining } = get()
+                const state = get()
+                const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = state
                 const dailyPomodoros = getDailyPomodoros(completedPomodoros, lastPomodoroDate)
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
                 const newPomodoros = mode === 'focus' ? dailyPomodoros + 1 : dailyPomodoros
 
                 // Save completed session if focus mode
                 if (mode === 'focus' && sessionStartedAt) {
-                    const now = new Date().toISOString()
-                    const totalDuration = settings.focusDuration * 60
-                    const elapsedSeconds = totalDuration - secondsRemaining + hyperfocusSeconds
-                    const session: FocusSession = {
-                        id: generateId(),
-                        userId: '',
-                        startedAt: sessionStartedAt,
-                        durationMinutes: Math.floor(elapsedSeconds / 60),
-                        actualDurationSeconds: elapsedSeconds,
-                        hyperfocusSeconds: hyperfocusSeconds,
-                        completed: true,
-                        createdAt: now,
-                    }
-                    const { pendingSessions } = get()
-                    set({ pendingSessions: [...pendingSessions, session] })
+                    get().addPendingSession(buildSession(state, true))
                 }
 
                 // Determine if auto-start is enabled for the next mode
                 const shouldAutoStart = (mode === 'focus' && settings.autoStartBreaks) ||
                     (mode !== 'focus' && settings.autoStartPomodoros)
+                const nextDuration = getDurationForMode(nextMode, settings)
 
                 set({
                     mode: nextMode,
@@ -351,10 +332,11 @@ export const useTimerStore = create<TimerState>()(
                     // begins the next phase now, without inventing offline cycles.
                     clock: shouldAutoStart ? {
                         anchoredAt: Date.now(),
-                        remainingMs: getDurationForMode(nextMode, settings) * 1000,
+                        remainingMs: nextDuration * 1000,
                         hyperfocusMs: 0,
                     } : null,
-                    secondsRemaining: getDurationForMode(nextMode, settings),
+                    phaseDuration: shouldAutoStart ? nextDuration : null,
+                    secondsRemaining: nextDuration,
                     hyperfocusSeconds: 0,
                     completedPomodoros: newPomodoros,
                     lastPomodoroDate: getLocalDateString(),
@@ -390,33 +372,22 @@ export const useTimerStore = create<TimerState>()(
 
             exitHyperfocus: () => {
                 get().tick()
-                const { mode, completedPomodoros, settings, hyperfocusSeconds, sessionStartedAt, lastPomodoroDate } = get()
+                const state = get()
+                const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = state
                 const dailyPomodoros = getDailyPomodoros(completedPomodoros, lastPomodoroDate)
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
                 const newPomodoros = dailyPomodoros + 1
 
                 // Save session with hyperfocus time
                 if (sessionStartedAt) {
-                    const now = new Date().toISOString()
-                    const totalSeconds = settings.focusDuration * 60 + hyperfocusSeconds
-                    const session: FocusSession = {
-                        id: crypto.randomUUID(),
-                        userId: '',
-                        startedAt: sessionStartedAt,
-                        durationMinutes: Math.floor(totalSeconds / 60),
-                        actualDurationSeconds: totalSeconds,
-                        hyperfocusSeconds: hyperfocusSeconds,
-                        completed: true,
-                        createdAt: now,
-                    }
-                    const { pendingSessions } = get()
-                    set({ pendingSessions: [...pendingSessions, session] })
+                    get().addPendingSession(buildSession(state, true))
                 }
 
                 set({
                     mode: nextMode,
                     status: 'idle',
                     clock: null,
+                    phaseDuration: null,
                     secondsRemaining: getDurationForMode(nextMode, settings),
                     hyperfocusSeconds: 0,
                     completedPomodoros: newPomodoros,
@@ -432,7 +403,8 @@ export const useTimerStore = create<TimerState>()(
             },
 
             updateSettings: (newSettings) => {
-                const { settings, mode, status } = get()
+                const state = get()
+                const { settings, mode, status, pausedFromHyperfocus } = state
                 const merged = { ...settings, ...newSettings }
                 const updates: Partial<TimerState> = { settings: merged }
 
@@ -440,32 +412,26 @@ export const useTimerStore = create<TimerState>()(
                 if (status === 'idle') {
                     updates.secondsRemaining = getDurationForMode(mode, merged)
                 }
-                // If paused, try to preserve ELAPSED time
-                // New Remaining = New Total - (Old Total - Old Remaining)
-                else if (status === 'paused' && !get().pausedFromHyperfocus) {
-                    const oldTotal = getDurationForMode(mode, settings)
-                    const clock = readClock(get())
-                    const elapsed = oldTotal - clock.remainingMs / 1000
+                // Running or paused: keep the time already studied and apply the
+                // new length to what is left. Hyperfocus has no countdown to adjust.
+                else if (status !== 'hyperfocus' && !pausedFromHyperfocus) {
+                    const clock = readClock(state)
+                    const elapsedMs = getPhaseDuration(state) * 1000 - clock.remainingMs
                     const newTotal = getDurationForMode(mode, merged)
-                    const newRemaining = Math.max(0, newTotal - elapsed)
+                    const newRemainingMs = Math.max(0, newTotal * 1000 - elapsedMs)
 
-                    updates.secondsRemaining = Math.ceil(newRemaining)
-                    updates.clock = { ...clock, remainingMs: newRemaining * 1000 }
+                    updates.secondsRemaining = Math.ceil(newRemainingMs / 1000)
+                    updates.clock = { ...clock, remainingMs: newRemainingMs }
+                    // Never shrink below what was studied, so elapsed time survives
+                    // even when the new duration is shorter than it.
+                    updates.phaseDuration = (elapsedMs + newRemainingMs) / 1000
                 }
 
                 set(updates)
             },
 
-            setSecondsRemaining: (seconds) => {
-                const state = get()
-                set({
-                    secondsRemaining: seconds,
-                    clock: state.status === 'idle' ? null : { ...readClock(state), remainingMs: seconds * 1000 },
-                })
-            },
-
             resetStats: () => {
-                set({ completedPomodoros: 0, pendingSessions: [] })
+                set({ completedPomodoros: 0, lastPomodoroDate: null, pendingSessions: [], cloudSessions: [] })
             },
 
             // Sync actions
@@ -512,6 +478,7 @@ export const useTimerStore = create<TimerState>()(
                 pausedFromHyperfocus: state.pausedFromHyperfocus,
                 sessionStartedAt: state.sessionStartedAt,
                 clock: state.clock,
+                phaseDuration: state.phaseDuration,
                 pendingSessions: state.pendingSessions,
             }),
             // Deep merge to handle new settings fields (e.g. dashboardAccent)
@@ -541,28 +508,13 @@ export const useTimerStore = create<TimerState>()(
                     (merged.status === 'running' || merged.status === 'paused' || merged.status === 'hyperfocus') &&
                     merged.sessionStartedAt
                 ) {
-                    const sessionDate = new Date(merged.sessionStartedAt)
-                    const sessionDay = `${sessionDate.getFullYear()}-${String(sessionDate.getMonth() + 1).padStart(2, '0')}-${String(sessionDate.getDate()).padStart(2, '0')}`
+                    const sessionDay = getLocalDateString(new Date(merged.sessionStartedAt))
                     const today = getLocalDateString()
 
                     if (sessionDay !== today) {
-                        const totalSeconds = getDurationForMode('focus', merged.settings)
-                        const elapsedSeconds = totalSeconds - merged.secondsRemaining + (merged.hyperfocusSeconds || 0)
-                        const elapsedMinutes = Math.floor(elapsedSeconds / 60)
-
-                        // Only save if at least 1 minute was studied
-                        if (elapsedMinutes >= 1) {
-                            const session: FocusSession = {
-                                id: generateId(),
-                                userId: '',
-                                startedAt: merged.sessionStartedAt,
-                                durationMinutes: elapsedMinutes,
-                                actualDurationSeconds: elapsedSeconds,
-                                hyperfocusSeconds: merged.hyperfocusSeconds || 0,
-                                completed: false,
-                                createdAt: new Date().toISOString(),
-                            }
-                            merged.pendingSessions = [...(merged.pendingSessions || []), session]
+                        const recovered = { ...merged, hyperfocusSeconds: merged.hyperfocusSeconds || 0 }
+                        if (shouldSavePartialSession(recovered)) {
+                            merged.pendingSessions = [...(merged.pendingSessions || []), buildSession(recovered, false)]
                         }
 
                         // Reset timer to idle
@@ -572,6 +524,7 @@ export const useTimerStore = create<TimerState>()(
                         merged.sessionStartedAt = null
                         merged.pausedFromHyperfocus = false
                         merged.clock = null
+                        merged.phaseDuration = null
                     }
                 }
 
