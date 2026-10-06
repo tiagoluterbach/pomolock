@@ -6,7 +6,7 @@ import { useUser } from '@/hooks/useUser'
 import { signOut } from '@/lib/auth'
 import { confirmAndResetStatistics } from '@/lib/syncController'
 import { UserAvatar } from '@/components/auth/UserAvatar'
-import { BarChart3, ListChecks, Timer, Settings, LogIn, LogOut, Trash2 } from 'lucide-react'
+import { BarChart3, Timer, Settings, LogIn, LogOut, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export function Navbar() {
@@ -54,17 +54,6 @@ export function Navbar() {
                         aria-label="Dashboard"
                     >
                         <BarChart3 className="h-5 w-5" />
-                    </Button>
-                </Link>
-
-                <Link href="/roadmap">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white/70 hover:text-white hover:bg-white/10 h-10 w-10 rounded-full cursor-pointer"
-                        aria-label="Roadmap"
-                    >
-                        <ListChecks className="h-5 w-5" />
                     </Button>
                 </Link>
 

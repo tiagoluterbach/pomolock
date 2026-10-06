@@ -1,6 +1,6 @@
 # PomoLock
 
-Timer Pomodoro com modo hyperfocus, heatmap de estudos, roadmap de Ciência de Dados e sincronização entre dispositivos.
+Timer Pomodoro com modo hyperfocus, heatmap de estudos e sincronização entre dispositivos.
 
 **[pomolock.vercel.app](https://pomolock.vercel.app)** · [English version](./README.en.md)
 
@@ -16,8 +16,6 @@ funcionasse igual no computador de casa e no da faculdade. Como não achei nada 
 - **Hyperfocus**: quando ativado, o timer não interrompe o foco no fim do Pomodoro. O tempo extra continua
   contando até você decidir fazer a pausa.
 - **Estatísticas**: heatmap mensal com as horas estudadas por dia e sequência de dias seguidos.
-- **Roadmap**: checklist das áreas de Ciência de Dados (Python, SQL, Estatística, Machine Learning...) com
-  progresso por área.
 - **Login com Google (opcional)** e sincronização das configurações e sessões na nuvem.
 - **Funciona offline e é instalável (PWA)**. Sessões feitas offline são enviadas quando a conexão volta.
 - **Alarmes e cores personalizáveis** e exportação dos dados em JSON.
@@ -38,17 +36,16 @@ funcionasse igual no computador de casa e no da faculdade. Como não achei nada 
 
 ```
 src/
-  app/            páginas (timer, dashboard, roadmap, settings, login, callback de auth)
+  app/            páginas (timer, dashboard, settings, login, callback de auth)
   components/
     timer/        tela do timer e controles
     dashboard/    heatmap e navegação por mês
     settings/     uma seção da página de configurações por arquivo
     auth/         ícone do Google e avatar
     ui/           componentes base do shadcn/ui
-  data/           conteúdo do roadmap
   hooks/          hooks de React (usuário, timer, sessões)
   lib/            auth, sincronização, estatísticas, exportação, utilitários
-  stores/         estado global (timer e progresso do roadmap)
+  stores/         estado global do timer
   types/          tipos e configurações padrão
   __tests__/      testes
 supabase/         SQL das tabelas e políticas de acesso

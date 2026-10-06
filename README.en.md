@@ -1,6 +1,6 @@
 # PomoLock
 
-A Pomodoro timer with hyperfocus mode, a study heatmap, a Data Science roadmap and cross-device sync.
+A Pomodoro timer with hyperfocus mode, a study heatmap and cross-device sync.
 
 **[pomolock.vercel.app](https://pomolock.vercel.app)** · [Versão em português](./README.md)
 
@@ -16,8 +16,6 @@ worked the same on my home computer and at university. I could not find one, so 
 - **Hyperfocus**: when enabled, the timer does not cut your focus when a Pomodoro ends. Extra time keeps
   counting until you decide to take the break.
 - **Statistics**: a monthly heatmap of hours studied per day and a day streak.
-- **Roadmap**: a checklist of Data Science areas (Python, SQL, Statistics, Machine Learning...) with progress
-  per area.
 - **Optional Google sign-in** with settings and sessions synced to the cloud.
 - **Works offline and installs as a PWA**. Sessions recorded offline are uploaded when the connection returns.
 - **Custom alarms and colors**, plus JSON data export.
@@ -38,17 +36,16 @@ worked the same on my home computer and at university. I could not find one, so 
 
 ```
 src/
-  app/            pages (timer, dashboard, roadmap, settings, login, auth callback)
+  app/            pages (timer, dashboard, settings, login, auth callback)
   components/
     timer/        timer screen and controls
     dashboard/    heatmap and month navigation
     settings/     one settings section per file
     auth/         Google icon and avatar
     ui/           shadcn/ui base components
-  data/           roadmap content
   hooks/          React hooks (user, timer, sessions)
   lib/            auth, sync, statistics, export, utilities
-  stores/         global state (timer and roadmap progress)
+  stores/         global timer state
   types/          types and default settings
   __tests__/      tests
 supabase/         table and access policy SQL
