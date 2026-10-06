@@ -108,7 +108,7 @@ export function getNextMode(
 // Hyperfocus has no deadline, so overtime is only trusted while someone is
 // around: after this long without interaction the user is asked to confirm,
 // and if nobody answers, hyperfocus pauses and the unanswered time is dropped.
-export const HYPERFOCUS_IDLE_WARNING_MS = 30 * 60 * 1000
+export const HYPERFOCUS_IDLE_WARNING_MS = 90 * 60 * 1000
 export const HYPERFOCUS_IDLE_GRACE_MS = 5 * 60 * 1000
 
 // Helper to get the correct pomodoro count, resetting if the day changed

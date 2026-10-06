@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useTimerStore } from '@/stores/timerStore'
+import { useTimerStore, HYPERFOCUS_IDLE_WARNING_MS, HYPERFOCUS_IDLE_GRACE_MS } from '@/stores/timerStore'
 import { buildDayStats } from '@/lib/stats'
 import { DEFAULT_SETTINGS, type FocusSession } from '@/types'
 
 const initialState = useTimerStore.getInitialState()
 const store = () => useTimerStore.getState()
 const MINUTE = 60000
+const WARNING_SECONDS = HYPERFOCUS_IDLE_WARNING_MS / 1000
 
 beforeEach(() => {
     vi.useFakeTimers()
@@ -67,10 +68,10 @@ describe('unattended hyperfocus', () => {
 
         expect(store().status).toBe('paused')
         expect(store().pausedFromHyperfocus).toBe(true)
-        expect(store().hyperfocusSeconds).toBe(30 * 60)
+        expect(store().hyperfocusSeconds).toBe(WARNING_SECONDS)
 
         store().skip()
-        expect(store().pendingSessions[0].actualDurationSeconds).toBe((25 + 30) * 60)
+        expect(store().pendingSessions[0].actualDurationSeconds).toBe(25 * 60 + WARNING_SECONDS)
     })
 
     it('drops only the unanswered time after the warning', () => {
@@ -80,11 +81,11 @@ describe('unattended hyperfocus', () => {
         finishFocusIntoHyperfocus()
         vi.advanceTimersByTime(10 * MINUTE)
         store().markActivity()
-        vi.advanceTimersByTime(36 * MINUTE)
+        vi.advanceTimersByTime(HYPERFOCUS_IDLE_WARNING_MS + HYPERFOCUS_IDLE_GRACE_MS + MINUTE)
         store().tick()
 
         expect(store().status).toBe('paused')
-        expect(store().hyperfocusSeconds).toBe((10 + 30) * 60)
+        expect(store().hyperfocusSeconds).toBe(10 * 60 + WARNING_SECONDS)
     })
 
     it('keeps counting while the user keeps interacting', () => {
@@ -111,7 +112,7 @@ describe('unattended hyperfocus', () => {
         store().markActivity()
 
         expect(store().status).toBe('paused')
-        expect(store().hyperfocusSeconds).toBe(30 * 60)
+        expect(store().hyperfocusSeconds).toBe(WARNING_SECONDS)
     })
 
     it('does not pause hyperfocus at once after a quiet focus phase', () => {
