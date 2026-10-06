@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { Flame } from 'lucide-react'
 import { HeatmapCalendar } from '@/components/dashboard/HeatmapCalendar'
+import { YearHeatmap } from '@/components/dashboard/YearHeatmap'
 import { PageHeader } from '@/components/PageHeader'
 import { useAllSessions } from '@/hooks/useAllSessions'
 import { useTimerStore } from '@/stores/timerStore'
@@ -29,6 +30,12 @@ export default function DashboardPage() {
                 <div className="bg-zinc-800/30 rounded-xl p-5 border border-zinc-700/30 transform scale-110 origin-top">
                     <HeatmapCalendar sessions={days} accentColor={dashboardAccent} />
                 </div>
+            </div>
+
+            {/* Wider than the month view so all 53 weeks fit on desktop; scrolls on phones.
+                The top margin clears the month card, which scale-110 enlarges past its box. */}
+            <div className="max-w-2xl mx-auto mt-16 bg-zinc-800/30 rounded-xl p-5 border border-zinc-700/30">
+                <YearHeatmap days={days} accentColor={dashboardAccent} />
             </div>
         </div>
     )

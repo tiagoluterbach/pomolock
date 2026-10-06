@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { DayCell } from './DayCell'
 import { MonthNavigator } from './MonthNavigator'
+import { MONTH_SHORT, EMPTY_CELL_COLOR, getIntensityColors } from './heatmap'
 import type { DayStats } from '@/types'
 
 const WEEK_DAYS = ['seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.', 'dom.']
@@ -33,19 +34,6 @@ function getCalendarGrid(year: number, month: number) {
     return grid
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-    if (!hex || hex.length < 7) return `rgba(139, 92, 246, ${alpha})`
-    const r = parseInt(hex.slice(1, 3), 16)
-    const g = parseInt(hex.slice(3, 5), 16)
-    const b = parseInt(hex.slice(5, 7), 16)
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-const MONTH_SHORT = [
-    'jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.',
-    'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.',
-]
-
 export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps) {
     const today = new Date()
     const [year, setYear] = useState(today.getFullYear())
@@ -53,24 +41,21 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
 
     const grid = useMemo(() => getCalendarGrid(year, month), [year, month])
 
-    const dayMap = useMemo(() => {
-        const map = new Map<number, number>()
-        sessions.forEach((s) => {
-            const [y, m, d] = s.date.split('-').map(Number)
-            if (y === year && (m - 1) === month) {
-                map.set(d, s.totalMinutes)
-            }
-        })
-        return map
-    }, [sessions, year, month])
+    const monthDays = useMemo(
+        () => sessions.filter((s) => {
+            const [y, m] = s.date.split('-').map(Number)
+            return y === year && (m - 1) === month
+        }),
+        [sessions, year, month],
+    )
 
-    const totalMinutes = useMemo(() => {
-        let total = 0
-        dayMap.forEach((minutes) => {
-            total += minutes
-        })
-        return total
-    }, [dayMap])
+    const dayMap = useMemo(
+        () => new Map(monthDays.map((s) => [Number(s.date.slice(8, 10)), s.totalMinutes])),
+        [monthDays],
+    )
+
+    // Sum seconds so the month total does not lose each day's partial minute.
+    const totalMinutes = Math.floor(monthDays.reduce((sum, s) => sum + s.totalSeconds, 0) / 60)
 
     const handlePrevious = () => {
         if (month === 0) {
@@ -99,13 +84,7 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
         )
     }
 
-    const intensityColors = useMemo(() => [
-        'transparent',
-        hexToRgba(accentColor, 0.15),
-        hexToRgba(accentColor, 0.30),
-        hexToRgba(accentColor, 0.50),
-        hexToRgba(accentColor, 0.70),
-    ], [accentColor])
+    const intensityColors = useMemo(() => getIntensityColors(accentColor), [accentColor])
 
     const totalHours = Math.floor(totalMinutes / 60)
     const remainingMin = totalMinutes % 60
@@ -153,7 +132,7 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
                             <div
                                 className="w-[18px] h-[14px] rounded-[3px]"
                                 style={{
-                                    backgroundColor: i === 0 ? 'rgba(255,255,255,0.06)' : intensityColors[i],
+                                    backgroundColor: i === 0 ? EMPTY_CELL_COLOR : intensityColors[i],
                                 }}
                             />
                             <span className="text-[9px] text-zinc-500 font-medium mr-0.5">

@@ -5,6 +5,7 @@ import { useTimer } from '@/hooks/useTimer'
 import { ModeSelector } from './ModeSelector'
 import { TimerDisplay } from './TimerDisplay'
 import { TimerControls } from './TimerControls'
+import { HyperfocusIdleWarning } from './HyperfocusIdleWarning'
 import { BarChart3, Hourglass } from 'lucide-react'
 import Link from 'next/link'
 
@@ -80,6 +81,8 @@ export function Timer() {
                     Stats
                 </Link>
             </div>
+
+            <HyperfocusIdleWarning accentColor={accentColor} />
 
             {/* Circular timer */}
             <div className="mb-10">

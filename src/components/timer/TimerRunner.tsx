@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import { useTimerStore } from '@/stores/timerStore'
+import { useTimerStore, HYPERFOCUS_IDLE_WARNING_MS, HYPERFOCUS_IDLE_GRACE_MS } from '@/stores/timerStore'
 import { formatClock } from '@/lib/utils'
 import { ALARM_FILES, type AppSettings } from '@/types'
 
@@ -12,11 +12,19 @@ function requestNotificationPermission() {
     }
 }
 
-function showTimerNotification(mode: string) {
-    if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'focus'] as const
+// Activity only needs minute precision; avoid rewriting storage on every keystroke.
+const ACTIVITY_THROTTLE_MS = 15000
 
-    const title = mode === 'focus' ? '⏰ Pomodoro finished!' : '☕ Break is over!'
-    const body = mode === 'focus' ? 'Time for a break!' : 'Time to focus!'
+function showTimerNotification(mode: string) {
+    showNotification(
+        mode === 'focus' ? '⏰ Pomodoro finished!' : '☕ Break is over!',
+        mode === 'focus' ? 'Time for a break!' : 'Time to focus!',
+    )
+}
+
+function showNotification(title: string, body: string) {
+    if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return
 
     try {
         const notification = new Notification(title, {
@@ -190,6 +198,41 @@ export function TimerRunner() {
         if (status === 'running' || status === 'hyperfocus') stopAlarm()
     }, [status, stopAlarm])
 
+    // Other tabs write the same storage key; adopt their state so tabs never
+    // overwrite each other's sessions or finish the same phase twice.
+    useEffect(() => {
+        const handler = (event: StorageEvent) => {
+            if (event.key === useTimerStore.persist.getOptions().name) {
+                useTimerStore.persist.rehydrate()
+            }
+        }
+        window.addEventListener('storage', handler)
+        return () => window.removeEventListener('storage', handler)
+    }, [])
+
+    // Record interaction while a session is open; hyperfocus overtime relies on it.
+    useEffect(() => {
+        if (status === 'idle') return
+
+        const handler = () => {
+            const { lastActivityAt, markActivity } = useTimerStore.getState()
+            if (lastActivityAt !== null && Date.now() - lastActivityAt < ACTIVITY_THROTTLE_MS) return
+            markActivity()
+        }
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') handler()
+        }
+        for (const type of ACTIVITY_EVENTS) window.addEventListener(type, handler, { passive: true })
+        document.addEventListener('visibilitychange', onVisible)
+        return () => {
+            for (const type of ACTIVITY_EVENTS) window.removeEventListener(type, handler)
+            document.removeEventListener('visibilitychange', onVisible)
+        }
+    }, [status])
+
+    // Ask once per quiet stretch whether the user is still there.
+    const warnedForRef = useRef<number | null>(null)
+
     // Worker messages are wake-ups, never seconds. Reconcile immediately on
     // resume/reload, and use one completion path for foreground and background.
     useEffect(() => {
@@ -201,6 +244,25 @@ export function TimerRunner() {
             if (before.clock !== clock || before.status !== status || before.mode !== mode) return
             before.tick()
             const state = useTimerStore.getState()
+
+            if (before.status === 'hyperfocus' && state.status === 'paused') {
+                showNotification('🧠 Hyperfocus paused', 'No activity for a while. Time after the warning was not counted.')
+                return
+            }
+            if (
+                state.status === 'hyperfocus' &&
+                state.lastActivityAt !== null &&
+                Date.now() - state.lastActivityAt >= HYPERFOCUS_IDLE_WARNING_MS &&
+                warnedForRef.current !== state.lastActivityAt
+            ) {
+                warnedForRef.current = state.lastActivityAt
+                showNotification(
+                    '🧠 Still studying?',
+                    `Hyperfocus pauses in ${HYPERFOCUS_IDLE_GRACE_MS / 60000} minutes without activity.`,
+                )
+                if (state.settings.soundEnabled) playAlarm({ ...state.settings, alarmRepeatCount: 1 })
+            }
+
             if (state.status !== 'running' || state.secondsRemaining > 0) return
 
             const { settings, hyperfocusEnabled } = state

@@ -42,6 +42,8 @@ interface TimerState {
     // Length (seconds) of the active phase, fixed when it starts so that
     // editing settings mid-session never rewrites time already studied.
     phaseDuration: number | null
+    // Last time (ms) the user interacted with the app; bounds hyperfocus overtime.
+    lastActivityAt: number | null
 
     // Settings
     settings: AppSettings
@@ -62,6 +64,7 @@ interface TimerState {
     enterHyperfocus: () => void
     exitHyperfocus: () => void
     toggleHyperfocus: () => void
+    markActivity: () => void
     updateSettings: (settings: Partial<AppSettings>) => void
     resetStats: () => void
 
@@ -101,6 +104,12 @@ export function getNextMode(
     }
     return 'focus'
 }
+
+// Hyperfocus has no deadline, so overtime is only trusted while someone is
+// around: after this long without interaction the user is asked to confirm,
+// and if nobody answers, hyperfocus pauses and the unanswered time is dropped.
+export const HYPERFOCUS_IDLE_WARNING_MS = 30 * 60 * 1000
+export const HYPERFOCUS_IDLE_GRACE_MS = 5 * 60 * 1000
 
 // Helper to get the correct pomodoro count, resetting if the day changed
 function getDailyPomodoros(completedPomodoros: number, lastPomodoroDate: string | null): number {
@@ -152,6 +161,15 @@ function getElapsedSeconds(state: SessionSource): number {
     return Math.round(getPhaseDuration(state) - state.secondsRemaining + state.hyperfocusSeconds)
 }
 
+// Hyperfocus left unattended past the warning and its grace period.
+function isIdleHyperfocus(state: Pick<TimerState, 'status' | 'lastActivityAt'>, now = Date.now()): boolean {
+    return (
+        state.status === 'hyperfocus' &&
+        state.lastActivityAt !== null &&
+        now - state.lastActivityAt >= HYPERFOCUS_IDLE_WARNING_MS + HYPERFOCUS_IDLE_GRACE_MS
+    )
+}
+
 function buildSession(state: SessionSource, completed: boolean): FocusSession {
     const elapsedSeconds = getElapsedSeconds(state)
     return {
@@ -195,6 +213,7 @@ export const useTimerStore = create<TimerState>()(
             pausedFromHyperfocus: false,
             clock: null,
             phaseDuration: null,
+            lastActivityAt: null,
 
             // Settings
             settings: DEFAULT_SETTINGS,
@@ -230,14 +249,16 @@ export const useTimerStore = create<TimerState>()(
                 const { status, sessionStartedAt, pausedFromHyperfocus } = state
                 if (status === 'running' || status === 'hyperfocus') return
                 const clock = readClock(state)
+                const lastActivityAt = Date.now()
                 if (pausedFromHyperfocus) {
                     // Resume hyperfocus counting
-                    set({ status: 'hyperfocus', pausedFromHyperfocus: false, clock, ...clockDisplay(clock) })
+                    set({ status: 'hyperfocus', pausedFromHyperfocus: false, clock, ...clockDisplay(clock), lastActivityAt })
                 } else {
                     set({
                         status: 'running',
                         clock,
                         ...clockDisplay(clock),
+                        lastActivityAt,
                         phaseDuration: status === 'idle' ? state.secondsRemaining : getPhaseDuration(state),
                         sessionStartedAt:
                             status === 'idle'
@@ -286,12 +307,14 @@ export const useTimerStore = create<TimerState>()(
                 const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = state
                 const dailyPomodoros = getDailyPomodoros(completedPomodoros, lastPomodoroDate)
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
-                const newPomodoros =
-                    mode === 'focus' ? dailyPomodoros + 1 : dailyPomodoros
+                // Like reset, a skipped focus needs at least a minute to count.
+                const countsAsSession =
+                    mode === 'focus' && !!sessionStartedAt && getElapsedSeconds(state) >= 60
+                const newPomodoros = countsAsSession ? dailyPomodoros + 1 : dailyPomodoros
 
-                // Save full session if skipping a focus mode
-                if (mode === 'focus' && sessionStartedAt) {
-                    get().addPendingSession(buildSession(state, false))
+                if (countsAsSession) {
+                    // Skipping after the countdown ended (hyperfocus) still finished the Pomodoro.
+                    get().addPendingSession(buildSession(state, state.secondsRemaining === 0))
                 }
 
                 set({
@@ -348,7 +371,16 @@ export const useTimerStore = create<TimerState>()(
             tick: () => {
                 const state = get()
                 if (state.status !== 'running' && state.status !== 'hyperfocus') return
-                const clock = readClock(state)
+                const now = Date.now()
+                if (isIdleHyperfocus(state, now)) {
+                    // Count overtime only up to the warning; the unanswered rest is dropped.
+                    const clock = readClock(state, now)
+                    const unattendedMs = now - (state.lastActivityAt! + HYPERFOCUS_IDLE_WARNING_MS)
+                    clock.hyperfocusMs = Math.max(0, clock.hyperfocusMs - unattendedMs)
+                    set({ status: 'paused', pausedFromHyperfocus: true, clock, ...clockDisplay(clock) })
+                    return
+                }
+                const clock = readClock(state, now)
                 const display = clockDisplay(clock)
                 if (!state.clock || display.secondsRemaining !== state.secondsRemaining || display.hyperfocusSeconds !== state.hyperfocusSeconds) {
                     set({ ...display, ...(!state.clock ? { clock } : {}) })
@@ -367,7 +399,15 @@ export const useTimerStore = create<TimerState>()(
                     remainingMs: 0,
                     hyperfocusMs: Math.max(0, -elapsedClock.remainingMs),
                 }
-                set({ status: 'hyperfocus', clock, ...clockDisplay(clock) })
+                // Inactivity is measured from the end of the countdown at the earliest,
+                // so a quiet focus phase (e.g. reading) does not pause hyperfocus at once.
+                const deadline = elapsedClock.anchoredAt - clock.hyperfocusMs
+                set({
+                    status: 'hyperfocus',
+                    clock,
+                    ...clockDisplay(clock),
+                    lastActivityAt: Math.max(state.lastActivityAt ?? deadline, deadline),
+                })
             },
 
             exitHyperfocus: () => {
@@ -400,6 +440,17 @@ export const useTimerStore = create<TimerState>()(
             toggleHyperfocus: () => {
                 const { hyperfocusEnabled } = get()
                 set({ hyperfocusEnabled: !hyperfocusEnabled })
+            },
+
+            markActivity: () => {
+                // Settle an unattended hyperfocus before the returning user's first
+                // event refreshes the activity time and hides the gap.
+                get().tick()
+                const state = get()
+                // An expired focus becomes hyperfocus on the runner's next refresh,
+                // which settles the gap; the following event records activity.
+                if (state.status === 'running' && state.secondsRemaining === 0) return
+                set({ lastActivityAt: Date.now() })
             },
 
             updateSettings: (newSettings) => {
@@ -466,6 +517,8 @@ export const useTimerStore = create<TimerState>()(
         {
             name: 'pomodoro-timer-storage',
             // Persist timer state so navigation doesn't reset the timer
+            // Display seconds are left out while a clock exists (they are derived
+            // from it), so ticks do not rewrite storage and wake other tabs.
             partialize: (state) => ({
                 settings: state.settings,
                 completedPomodoros: state.completedPomodoros,
@@ -473,12 +526,15 @@ export const useTimerStore = create<TimerState>()(
                 hyperfocusEnabled: state.hyperfocusEnabled,
                 mode: state.mode,
                 status: state.status,
-                secondsRemaining: state.secondsRemaining,
-                hyperfocusSeconds: state.hyperfocusSeconds,
+                ...(state.clock ? {} : {
+                    secondsRemaining: state.secondsRemaining,
+                    hyperfocusSeconds: state.hyperfocusSeconds,
+                }),
                 pausedFromHyperfocus: state.pausedFromHyperfocus,
                 sessionStartedAt: state.sessionStartedAt,
                 clock: state.clock,
                 phaseDuration: state.phaseDuration,
+                lastActivityAt: state.lastActivityAt,
                 pendingSessions: state.pendingSessions,
             }),
             // Deep merge to handle new settings fields (e.g. dashboardAccent)

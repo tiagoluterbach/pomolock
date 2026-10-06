@@ -11,6 +11,12 @@ display refresh; delayed or duplicate messages do not change the duration.
 - An expired phase completes once. If auto-start is enabled, the next phase
   starts when completion is processed; missed offline cycles are not generated.
 - With hyperfocus enabled, time since the focus deadline becomes overtime.
+  Overtime needs someone present: after 30 minutes without interaction (counted
+  from the deadline at the earliest) the app asks "Still studying?"; if nobody
+  answers within 5 minutes, hyperfocus pauses and only the time up to the
+  warning is kept. This also caps overtime recorded while the page was closed.
+- Several open tabs share one saved timer: each adopts the others' writes, so
+  sessions are not overwritten or recorded twice.
 - Legacy saved timers without an anchor resume from their last saved seconds;
   their missing elapsed time cannot be reconstructed reliably.
 

@@ -85,13 +85,24 @@ export async function fetchCloudSessions(): Promise<FocusSession[]> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
 
-    const { data, error } = await supabase
-        .from('focus_sessions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('started_at', { ascending: true })
+    // Supabase returns at most 1000 rows per request, so read page by page.
+    // Ordering by id too keeps pages stable when start times are equal.
+    const PAGE_SIZE = 1000
+    const data: Record<string, unknown>[] = []
+    for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page, error } = await supabase
+            .from('focus_sessions')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('started_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, from + PAGE_SIZE - 1)
 
-    if (error || !data) return []
+        // A partial history would look like lost study time; show none instead.
+        if (error || !page) return []
+        data.push(...page)
+        if (page.length < PAGE_SIZE) break
+    }
 
     return data.map((row: Record<string, unknown>) => ({
         id: row.id as string,

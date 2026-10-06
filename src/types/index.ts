@@ -81,7 +81,8 @@ export interface FocusSession {
 
 export interface DayStats {
     date: string // YYYY-MM-DD
-    totalMinutes: number
+    totalSeconds: number
+    totalMinutes: number // whole minutes of totalSeconds
     sessionCount: number
 }
 

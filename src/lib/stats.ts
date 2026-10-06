@@ -1,14 +1,16 @@
 import type { DayStats, FocusSession } from '@/types'
 import { getLocalDateString } from '@/lib/utils'
 
-/** Total study minutes and session count per local day, oldest first. */
+/** Total study time and session count per local day, oldest first. */
 export function buildDayStats(sessions: FocusSession[]): DayStats[] {
     const dayMap = new Map<string, DayStats>()
 
     for (const session of sessions) {
         const date = getLocalDateString(new Date(session.startedAt))
-        const existing = dayMap.get(date) || { date, totalMinutes: 0, sessionCount: 0 }
-        existing.totalMinutes += Math.floor(session.actualDurationSeconds / 60)
+        const existing = dayMap.get(date) || { date, totalSeconds: 0, totalMinutes: 0, sessionCount: 0 }
+        // Sum seconds and round once, so partial minutes of each session add up.
+        existing.totalSeconds += session.actualDurationSeconds
+        existing.totalMinutes = Math.floor(existing.totalSeconds / 60)
         existing.sessionCount += 1
         dayMap.set(date, existing)
     }

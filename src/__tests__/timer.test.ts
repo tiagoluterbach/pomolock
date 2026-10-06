@@ -132,8 +132,15 @@ describe('Timer Store', () => {
     })
 
     describe('skip', () => {
-        it('should go to short break after skipping focus (first pomodoro)', () => {
+        // A skipped focus only counts after at least a minute of study.
+        const studyAndSkip = () => {
+            useTimerStore.getState().start()
+            vi.advanceTimersByTime(60000)
             useTimerStore.getState().skip()
+        }
+
+        it('should go to short break after skipping focus (first pomodoro)', () => {
+            studyAndSkip()
             expect(useTimerStore.getState().mode).toBe('shortBreak')
             expect(useTimerStore.getState().completedPomodoros).toBe(1)
         })
@@ -141,11 +148,11 @@ describe('Timer Store', () => {
         it('should go to long break after completing pomodorosUntilLongBreak', () => {
             // Complete 3 pomodoros (short breaks)
             for (let i = 0; i < 3; i++) {
-                useTimerStore.getState().skip() // focus -> short break
+                studyAndSkip() // focus -> short break
                 useTimerStore.getState().skip() // short break -> focus
             }
             // 4th pomodoro skip should trigger long break
-            useTimerStore.getState().skip()
+            studyAndSkip()
             expect(useTimerStore.getState().mode).toBe('longBreak')
             expect(useTimerStore.getState().completedPomodoros).toBe(4)
         })
