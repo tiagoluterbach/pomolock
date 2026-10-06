@@ -3,14 +3,15 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { getLocalDateString } from '@/lib/utils'
 import { getHeatmapIntensity, type DayStats } from '@/types'
-import { MONTH_SHORT, EMPTY_CELL_COLOR, getIntensityColors } from './heatmap'
+import { MONTH_SHORT } from './heatmap'
 
 const WEEKS = 53
+// GitHub's dark theme contribution colors, from no study to most study.
+const LEVEL_COLORS = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353']
 const ROW_LABELS = ['seg.', '', 'qua.', '', 'sex.', '', ''] // Monday-first, like the month view
 
 interface YearHeatmapProps {
     days: DayStats[]
-    accentColor: string
 }
 
 interface Cell {
@@ -50,8 +51,7 @@ function formatDuration(minutes: number): string {
     return `${Math.floor(minutes / 60)}h ${minutes % 60}min`
 }
 
-export function YearHeatmap({ days, accentColor }: YearHeatmapProps) {
-    const intensityColors = useMemo(() => getIntensityColors(accentColor), [accentColor])
+export function YearHeatmap({ days }: YearHeatmapProps) {
     const weeks = useMemo(
         () => buildWeeks(new Map(days.map((d) => [d.date, d.totalMinutes]))),
         [days],
@@ -99,7 +99,6 @@ export function YearHeatmap({ days, accentColor }: YearHeatmapProps) {
                                     {monthLabels[w]}
                                 </span>
                                 {week.map((cell) => {
-                                    const intensity = getHeatmapIntensity(cell.minutes)
                                     return (
                                         <div
                                             key={cell.date}
@@ -108,7 +107,7 @@ export function YearHeatmap({ days, accentColor }: YearHeatmapProps) {
                                             style={{
                                                 backgroundColor: cell.future
                                                     ? 'transparent'
-                                                    : intensity === 0 ? EMPTY_CELL_COLOR : intensityColors[intensity],
+                                                    : LEVEL_COLORS[getHeatmapIntensity(cell.minutes)],
                                             }}
                                         />
                                     )
@@ -123,11 +122,11 @@ export function YearHeatmap({ days, accentColor }: YearHeatmapProps) {
                 <span>{activeDays} day{activeDays !== 1 ? 's' : ''} studied</span>
                 <div className="flex items-center gap-1 text-[10px] text-zinc-500">
                     less
-                    {intensityColors.map((color, i) => (
+                    {LEVEL_COLORS.map((color) => (
                         <div
-                            key={i}
+                            key={color}
                             className="w-[9px] h-[9px] rounded-[2px]"
-                            style={{ backgroundColor: i === 0 ? EMPTY_CELL_COLOR : color }}
+                            style={{ backgroundColor: color }}
                         />
                     ))}
                     more

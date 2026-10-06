@@ -35,7 +35,7 @@ export default function DashboardPage() {
             {/* Wider than the month view so all 53 weeks fit on desktop; scrolls on phones.
                 The top margin clears the month card, which scale-110 enlarges past its box. */}
             <div className="max-w-2xl mx-auto mt-16 bg-zinc-800/30 rounded-xl p-5 border border-zinc-700/30">
-                <YearHeatmap days={days} accentColor={dashboardAccent} />
+                <YearHeatmap days={days} />
             </div>
         </div>
     )
