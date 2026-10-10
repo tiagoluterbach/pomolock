@@ -58,11 +58,21 @@ export function TimerControls({
                     }}
                     aria-label={isActive ? 'Pause' : confirmingStart ? 'Click again to start' : 'Start'}
                 >
-                    {isActive ? (
-                        <Pause className="h-6 w-6 text-white fill-white" />
-                    ) : (
-                        <Play className="h-6 w-6 text-white fill-white ml-0.5" />
-                    )}
+                    {/* Both icons stay mounted; the active one turns in while the other turns out. */}
+                    <span className="relative h-6 w-6">
+                        <Pause
+                            className={cn(
+                                'absolute inset-0 h-6 w-6 text-white fill-white transition-[transform,opacity] duration-300 ease-[var(--ease-apple)]',
+                                isActive ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-50 opacity-0',
+                            )}
+                        />
+                        <Play
+                            className={cn(
+                                'absolute inset-0 h-6 w-6 translate-x-0.5 text-white fill-white transition-[transform,opacity] duration-300 ease-[var(--ease-apple)]',
+                                isActive ? 'rotate-90 scale-50 opacity-0' : 'rotate-0 scale-100 opacity-100',
+                            )}
+                        />
+                    </span>
                 </button>
 
                 {/* Skip button */}

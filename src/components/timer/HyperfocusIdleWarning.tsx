@@ -35,7 +35,10 @@ export function HyperfocusIdleWarning({ accentColor }: HyperfocusIdleWarningProp
             role="alertdialog"
             aria-label="Still studying?"
             className="w-full max-w-md mb-6 rounded-xl px-4 py-3 flex items-center justify-between gap-3 bg-zinc-800/60"
-            style={{ border: `1px solid ${accentColor}60` }}
+            style={{
+                border: `1px solid ${accentColor}60`,
+                animation: 'spring-down 600ms var(--ease-apple) both',
+            }}
         >
             <div className="text-sm">
                 <p className="font-semibold text-white">Still studying?</p>

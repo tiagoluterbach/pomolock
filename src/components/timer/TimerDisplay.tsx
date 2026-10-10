@@ -1,8 +1,12 @@
 'use client'
 
+import { useState } from 'react'
+import { cn } from '@/lib/utils'
+import type { TimerMode } from '@/types'
 import { ProgressRing } from './ProgressRing'
 
 interface TimerDisplayProps {
+    mode: TimerMode
     formattedTime: string
     modeLabel: string
     accentColor: string
@@ -12,6 +16,7 @@ interface TimerDisplayProps {
 }
 
 export function TimerDisplay({
+    mode,
     formattedTime,
     modeLabel,
     accentColor,
@@ -19,13 +24,31 @@ export function TimerDisplay({
     canReset,
     onReset,
 }: TimerDisplayProps) {
+    // Each phase change (a Pomodoro ending, a break starting) gets a soft beat
+    // on the ring and a fresh entrance for the time. Not on the first render.
+    const [handover, setHandover] = useState({ mode, count: 0 })
+    if (handover.mode !== mode) setHandover({ mode, count: handover.count + 1 })
+    const animate = handover.count > 0
+
     return (
         <div className="relative flex items-center justify-center">
-            <ProgressRing color={accentColor} />
+            <div
+                key={handover.count}
+                style={animate ? { animation: 'ring-pulse 600ms var(--ease-apple)' } : undefined}
+            >
+                <ProgressRing color={accentColor} />
+            </div>
 
             {/* Center content */}
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <span className="text-5xl sm:text-6xl font-bold text-white tabular-nums tracking-tight" style={{ fontFamily: 'var(--font-rubik)' }}>
+                <span
+                    key={handover.count}
+                    className={cn(
+                        'text-5xl sm:text-6xl font-bold text-white tabular-nums tracking-tight',
+                        animate && 'animate-in fade-in zoom-in-90 duration-500 ease-[var(--ease-apple)]',
+                    )}
+                    style={{ fontFamily: 'var(--font-rubik)' }}
+                >
                     {formattedTime}
                 </span>
                 <span

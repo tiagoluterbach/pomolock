@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import { Lock, LockOpen } from 'lucide-react'
 import { useTimerStore } from '@/stores/timerStore'
 import { cn } from '@/lib/utils'
 import type { TimerMode } from '@/types'
@@ -22,6 +24,11 @@ export function ModeSelector({ accentColor, locked }: ModeSelectorProps) {
     const reset = useTimerStore((s) => s.reset)
     const activeIndex = MODES.findIndex((m) => m.value === mode)
 
+    // A lock snaps onto the selector while giving up is locked, and opens and
+    // fades out when it is released (hyperfocus, or the setting turned off).
+    const [lock, setLock] = useState({ locked, releasing: false })
+    if (lock.locked !== locked) setLock({ locked, releasing: !locked })
+
     const handleClick = (value: TimerMode) => {
         // Stop any playing alarm when mode button is clicked
         window.dispatchEvent(new Event('pomodoro-stop-alarm'))
@@ -36,7 +43,24 @@ export function ModeSelector({ accentColor, locked }: ModeSelectorProps) {
     }
 
     return (
-        <div className="w-full max-w-md mx-auto">
+        <div className="relative w-full max-w-md mx-auto">
+            {(locked || lock.releasing) && (
+                <span
+                    aria-hidden="true"
+                    className="absolute -top-2 -right-2 z-10 h-6 w-6 rounded-full flex items-center justify-center bg-zinc-900 border border-white/10 shadow-md"
+                    style={{
+                        color: accentColor,
+                        animation: locked
+                            ? 'lock-pop 400ms var(--ease-apple) both'
+                            : 'lock-release 900ms var(--ease-apple) both',
+                    }}
+                    onAnimationEnd={() => {
+                        if (!locked) setLock({ locked, releasing: false })
+                    }}
+                >
+                    {locked ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                </span>
+            )}
             <div
                 className={cn(
                     'relative grid grid-cols-3 bg-zinc-800/60 rounded-xl p-1 gap-1 transition-opacity duration-300 ease-[var(--ease-apple)]',

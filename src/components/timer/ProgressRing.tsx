@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useTimerStore, getDurationForMode } from '@/stores/timerStore'
 
 const SIZE = 280
@@ -37,7 +37,23 @@ interface ProgressRingProps {
  */
 export function ProgressRing({ color }: ProgressRingProps) {
     const arcRef = useRef<SVGCircleElement>(null)
+    const gradientRef = useRef<SVGAnimateElement>(null)
     const status = useTimerStore((s) => s.status)
+
+    // When a focus runs into hyperfocus, the ring refills clockwise with a
+    // gradient that starts at the focus color and settles on the hyperfocus one.
+    const [sweep, setSweep] = useState<{ from: string; to: string } | null>(null)
+    const [previous, setPrevious] = useState({ status, color })
+    if (previous.status !== status || previous.color !== color) {
+        setPrevious({ status, color })
+        if (status === 'hyperfocus' && previous.status === 'running') {
+            setSweep({ from: previous.color, to: color })
+        }
+    }
+
+    useEffect(() => {
+        if (sweep) gradientRef.current?.beginElement()
+    }, [sweep])
 
     useEffect(() => {
         const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -91,7 +107,43 @@ export function ProgressRing({ color }: ProgressRingProps) {
                 strokeWidth={STROKE}
                 fill="none"
                 className="transition-[stroke] duration-500 ease-[var(--ease-apple)]"
+                style={{ visibility: sweep ? 'hidden' : undefined }}
             />
+            {sweep && (
+                <>
+                    <defs>
+                        <linearGradient id="hyperfocus-sweep" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={SIZE} y2={SIZE}>
+                            <stop offset="0" stopColor={sweep.from}>
+                                <animate
+                                    ref={gradientRef}
+                                    attributeName="stop-color"
+                                    from={sweep.from}
+                                    to={sweep.to}
+                                    dur="1s"
+                                    begin="indefinite"
+                                    fill="freeze"
+                                />
+                            </stop>
+                            <stop offset="1" stopColor={sweep.to} />
+                        </linearGradient>
+                    </defs>
+                    <circle
+                        cx={SIZE / 2}
+                        cy={SIZE / 2}
+                        r={RADIUS}
+                        stroke="url(#hyperfocus-sweep)"
+                        strokeWidth={STROKE}
+                        strokeLinecap="round"
+                        strokeDasharray={CIRCUMFERENCE}
+                        fill="none"
+                        style={{
+                            '--ring-length': CIRCUMFERENCE,
+                            animation: 'ring-sweep 1s var(--ease-apple) both',
+                        } as CSSProperties}
+                        onAnimationEnd={() => setSweep(null)}
+                    />
+                </>
+            )}
         </svg>
     )
 }

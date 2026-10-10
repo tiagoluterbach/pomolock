@@ -110,6 +110,7 @@ export function Timer() {
             {/* Circular timer */}
             <div className="mb-10">
                 <TimerDisplay
+                    mode={mode}
                     formattedTime={formattedTime}
                     modeLabel={modeLabel}
                     accentColor={accentColor}

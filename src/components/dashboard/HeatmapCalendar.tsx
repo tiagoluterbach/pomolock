@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { DayCell } from './DayCell'
 import { MonthNavigator } from './MonthNavigator'
+import { cn } from '@/lib/utils'
 import { MONTH_SHORT, EMPTY_CELL_COLOR, getIntensityColors } from './heatmap'
 import type { DayStats } from '@/types'
 
@@ -38,6 +39,8 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
     const today = new Date()
     const [year, setYear] = useState(today.getFullYear())
     const [month, setMonth] = useState(today.getMonth())
+    // Which arrow was used last, so the new month slides in from that side.
+    const [direction, setDirection] = useState<'previous' | 'next' | null>(null)
 
     const grid = useMemo(() => getCalendarGrid(year, month), [year, month])
 
@@ -58,6 +61,7 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
     const totalMinutes = Math.floor(monthDays.reduce((sum, s) => sum + s.totalSeconds, 0) / 60)
 
     const handlePrevious = () => {
+        setDirection('previous')
         if (month === 0) {
             setYear(year - 1)
             setMonth(11)
@@ -67,6 +71,7 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
     }
 
     const handleNext = () => {
+        setDirection('next')
         if (month === 11) {
             setYear(year + 1)
             setMonth(0)
@@ -112,7 +117,15 @@ export function HeatmapCalendar({ sessions, accentColor }: HeatmapCalendarProps)
             </div>
 
             {/* Calendar grid */}
-            <div className="grid grid-cols-7 gap-[5px]">
+            <div
+                key={`${year}-${month}`}
+                className={cn(
+                    'grid grid-cols-7 gap-[5px]',
+                    direction && 'animate-in fade-in duration-300 ease-[var(--ease-apple)]',
+                    direction === 'next' && 'slide-in-from-right-6',
+                    direction === 'previous' && 'slide-in-from-left-6',
+                )}
+            >
                 {grid.map((day, i) => (
                     <DayCell
                         key={i}
