@@ -13,6 +13,7 @@ export interface TimerSettings {
     pomodorosUntilLongBreak: number
     autoStartBreaks: boolean
     autoStartPomodoros: boolean
+    noGiveUp: boolean // hide skip/reset/mode switch during the focus countdown
     soundEnabled: boolean
     soundVolume: number // 0-1
 }
@@ -45,6 +46,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pomodorosUntilLongBreak: 4,
     autoStartBreaks: false,
     autoStartPomodoros: false,
+    noGiveUp: false,
     soundEnabled: true,
     soundVolume: 0.5,
     modeColors: {

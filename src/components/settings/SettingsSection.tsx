@@ -8,10 +8,11 @@ export function SettingsSection({ title, danger, children }: {
     children: ReactNode
 }) {
     return (
-        <section className="space-y-4">
-            <h2 className={cn('text-base font-semibold', danger ? 'text-red-400' : 'text-white')}>{title}</h2>
-            <div className={cn('border-t', danger ? 'border-red-900/30' : 'border-zinc-800')} />
-            {children}
+        <section className="space-y-2.5">
+            <h2 className={cn('px-1 text-sm font-semibold', danger ? 'text-red-400' : 'text-zinc-300')}>{title}</h2>
+            <div className={cn('glass rounded-2xl p-4 space-y-4', danger && 'border-red-900/40!')}>
+                {children}
+            </div>
         </section>
     )
 }

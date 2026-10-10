@@ -111,37 +111,25 @@ describe('elapsed-time clock', () => {
         expect(useTimerStore.getState().hyperfocusSeconds).toBe(91)
     })
 
-    it('preserves elapsed fractions when changing the duration while paused', () => {
-        useTimerStore.getState().start()
-        vi.advanceTimersByTime(1250)
-        useTimerStore.getState().pause()
-        useTimerStore.getState().updateSettings({ focusDuration: 30 })
-        useTimerStore.getState().start()
-        vi.advanceTimersByTime(750)
-        useTimerStore.getState().tick()
-        expect(useTimerStore.getState().secondsRemaining).toBe(1798)
-    })
-
-    it('keeps studied time when a shorter value is typed on the way to a longer one', () => {
+    it('keeps the running phase length when the duration changes mid-session', () => {
         useTimerStore.getState().start()
         vi.advanceTimersByTime(10 * 60000)
-        useTimerStore.getState().pause()
-        // Typing "30" passes through "3", which is shorter than the 10 minutes studied
-        useTimerStore.getState().updateSettings({ focusDuration: 3 })
         useTimerStore.getState().updateSettings({ focusDuration: 30 })
-        expect(useTimerStore.getState().secondsRemaining).toBe(20 * 60)
+        useTimerStore.getState().tick()
+        expect(useTimerStore.getState().secondsRemaining).toBe(50 * 60)
         useTimerStore.getState().reset()
         expect(useTimerStore.getState().pendingSessions[0].actualDurationSeconds).toBe(10 * 60)
+        // The new length applies from the next phase.
+        expect(useTimerStore.getState().secondsRemaining).toBe(30 * 60)
     })
 
-    it('does not credit unstudied time when the duration changes while running', () => {
+    it('pins the length of an old snapshot before the settings change', () => {
         useTimerStore.getState().start()
-        vi.advanceTimersByTime(5 * 60000)
-        useTimerStore.getState().updateSettings({ focusDuration: 90 })
-        expect(useTimerStore.getState().secondsRemaining).toBe(85 * 60)
+        useTimerStore.setState({ phaseDuration: null })
         vi.advanceTimersByTime(60000)
+        useTimerStore.getState().updateSettings({ focusDuration: 30 })
         useTimerStore.getState().reset()
-        expect(useTimerStore.getState().pendingSessions[0].actualDurationSeconds).toBe(6 * 60)
+        expect(useTimerStore.getState().pendingSessions[0].actualDurationSeconds).toBe(60)
     })
 
     it('clears the old deadline when resetting and starting a new session', () => {

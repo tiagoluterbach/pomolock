@@ -1,4 +1,4 @@
-import { useTimerStore, getDurationForMode } from '@/stores/timerStore'
+import { useTimerStore, isGivingUpLocked } from '@/stores/timerStore'
 import { formatClock, getLocalDateString } from '@/lib/utils'
 import type { TimerMode } from '@/types'
 
@@ -26,15 +26,13 @@ export function useTimer() {
         toggleHyperfocus,
         setMode,
     } = useTimerStore()
+    const givingUpLocked = useTimerStore(isGivingUpLocked)
 
     const dailyPomodoros = lastPomodoroDate === getLocalDateString() ? completedPomodoros : 0
 
     const isHyperfocusPaused =
         status === 'paused' && mode === 'focus' && secondsRemaining === 0 && hyperfocusEnabled
     const showHyperfocus = status === 'hyperfocus' || isHyperfocusPaused
-
-    const total = getDurationForMode(mode, settings)
-    const progress = showHyperfocus ? 1 : total === 0 ? 0 : secondsRemaining / total
 
     const modeLabel =
         status === 'hyperfocus' ? 'Hyperfocus'
@@ -52,7 +50,7 @@ export function useTimer() {
         formattedTime: formatClock(showHyperfocus ? hyperfocusSeconds : secondsRemaining),
         accentColor: showHyperfocus ? settings.modeColors.hyperfocus : settings.modeColors[mode],
         modeLabel,
-        progress,
+        givingUpLocked,
         start,
         pause,
         reset,

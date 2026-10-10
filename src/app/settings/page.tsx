@@ -13,7 +13,7 @@ import { DangerZoneSection } from '@/components/settings/DangerZoneSection'
 export default function SettingsPage() {
     return (
         <div className="min-h-screen bg-[#1A1B24] pt-16 pb-16 px-4">
-            <div className="max-w-lg mx-auto space-y-8">
+            <div className="max-w-lg mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-1 duration-500 ease-[var(--ease-apple)]">
                 <PageHeader title="Settings" />
                 <AccountSection />
                 <TimerSection />

@@ -105,4 +105,22 @@ describe('timer wake-ups and completion', () => {
         act(() => vi.advanceTimersByTime(2000))
         expect(useTimerStore.getState().secondsRemaining).toBe(3598)
     })
+
+    it('asks before leaving the page only while a session is open', () => {
+        const leave = () => {
+            const event = new Event('beforeunload', { cancelable: true })
+            window.dispatchEvent(event)
+            return event.defaultPrevented
+        }
+        render(<TimerRunner />)
+        expect(leave()).toBe(false)
+
+        act(() => useTimerStore.getState().start())
+        expect(leave()).toBe(true)
+        act(() => useTimerStore.getState().pause())
+        expect(leave()).toBe(true)
+
+        act(() => useTimerStore.getState().reset())
+        expect(leave()).toBe(false)
+    })
 })

@@ -8,11 +8,21 @@ import { confirmAndResetStatistics } from '@/lib/syncController'
 import { UserAvatar } from '@/components/auth/UserAvatar'
 import { BarChart3, Timer, Settings, LogIn, LogOut, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export function Navbar() {
     const { user } = useUser()
     const [showDropdown, setShowDropdown] = useState(false)
+    const [scrolled, setScrolled] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
+
+    // Frost the bar only once content scrolls under it, like a macOS toolbar.
+    useEffect(() => {
+        const update = () => setScrolled(window.scrollY > 4)
+        update()
+        window.addEventListener('scroll', update, { passive: true })
+        return () => window.removeEventListener('scroll', update)
+    }, [])
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -34,7 +44,14 @@ export function Navbar() {
 
     // Let clicks pass through the transparent space when page content scrolls underneath.
     return (
-        <nav className="pointer-events-none fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center justify-between">
+        <nav
+            className={cn(
+                'pointer-events-none fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center justify-between border-b transition-[background-color,border-color,backdrop-filter] duration-300 ease-[var(--ease-apple)]',
+                scrolled
+                    ? 'bg-[#1A1B24]/70 border-white/5 backdrop-blur-xl backdrop-saturate-150'
+                    : 'bg-transparent border-transparent',
+            )}
+        >
             <Link
                 href="/"
                 className="pointer-events-auto flex items-center gap-2 text-white/90 hover:text-white transition-colors"
@@ -80,7 +97,7 @@ export function Navbar() {
 
                         {/* Dropdown menu */}
                         {showDropdown && (
-                            <div className="absolute right-0 top-12 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl shadow-black/40 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                            <div className="absolute right-0 top-12 w-56 bg-zinc-900/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/40 py-2 z-50 animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-200 ease-[var(--ease-apple)] origin-top-right">
                                 {/* User info */}
                                 <div className="px-3 py-2 border-b border-zinc-800">
                                     <p className="text-sm font-medium text-white truncate">

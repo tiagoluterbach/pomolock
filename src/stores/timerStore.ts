@@ -147,6 +147,25 @@ function isActive(status: TimerStatus): boolean {
     return status === 'running' || status === 'paused' || status === 'hyperfocus'
 }
 
+/** A session is open: timer settings stay locked until it ends. */
+export function isSessionInProgress(status: TimerStatus): boolean {
+    return isActive(status)
+}
+
+/**
+ * "No giving up" hides the ways out of a focus countdown. Hyperfocus means the
+ * Pomodoro already finished, so leaving it is allowed again.
+ */
+export function isGivingUpLocked(
+    state: Pick<TimerState, 'mode' | 'status' | 'pausedFromHyperfocus' | 'settings'>,
+): boolean {
+    return (
+        state.settings.noGiveUp &&
+        state.mode === 'focus' &&
+        (state.status === 'running' || (state.status === 'paused' && !state.pausedFromHyperfocus))
+    )
+}
+
 type SessionSource = Pick<
     TimerState,
     'mode' | 'settings' | 'secondsRemaining' | 'hyperfocusSeconds' | 'phaseDuration' | 'sessionStartedAt'
@@ -224,6 +243,7 @@ export const useTimerStore = create<TimerState>()(
 
             // Actions
             setMode: (mode) => {
+                if (isGivingUpLocked(get())) return
                 get().tick()
                 const state = get()
 
@@ -282,6 +302,7 @@ export const useTimerStore = create<TimerState>()(
             },
 
             reset: () => {
+                if (isGivingUpLocked(get())) return
                 get().tick()
                 const state = get()
 
@@ -302,6 +323,7 @@ export const useTimerStore = create<TimerState>()(
             },
 
             skip: () => {
+                if (isGivingUpLocked(get())) return
                 get().tick()
                 const state = get()
                 const { mode, completedPomodoros, settings, sessionStartedAt, lastPomodoroDate } = state
@@ -455,7 +477,7 @@ export const useTimerStore = create<TimerState>()(
 
             updateSettings: (newSettings) => {
                 const state = get()
-                const { settings, mode, status, pausedFromHyperfocus } = state
+                const { settings, mode, status } = state
                 const merged = { ...settings, ...newSettings }
                 const updates: Partial<TimerState> = { settings: merged }
 
@@ -463,19 +485,11 @@ export const useTimerStore = create<TimerState>()(
                 if (status === 'idle') {
                     updates.secondsRemaining = getDurationForMode(mode, merged)
                 }
-                // Running or paused: keep the time already studied and apply the
-                // new length to what is left. Hyperfocus has no countdown to adjust.
-                else if (status !== 'hyperfocus' && !pausedFromHyperfocus) {
-                    const clock = readClock(state)
-                    const elapsedMs = getPhaseDuration(state) * 1000 - clock.remainingMs
-                    const newTotal = getDurationForMode(mode, merged)
-                    const newRemainingMs = Math.max(0, newTotal * 1000 - elapsedMs)
-
-                    updates.secondsRemaining = Math.ceil(newRemainingMs / 1000)
-                    updates.clock = { ...clock, remainingMs: newRemainingMs }
-                    // Never shrink below what was studied, so elapsed time survives
-                    // even when the new duration is shorter than it.
-                    updates.phaseDuration = (elapsedMs + newRemainingMs) / 1000
+                // A session in progress keeps the length it started with; new
+                // durations apply from the next phase. Pin it for old snapshots
+                // that still derive it from the settings.
+                else if (state.phaseDuration === null) {
+                    updates.phaseDuration = getPhaseDuration(state)
                 }
 
                 set(updates)

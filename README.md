@@ -37,6 +37,10 @@ funcionasse igual no computador de casa e no da faculdade. Não achei nada assim
 - Início automático das pausas e dos Pomodoros, se você quiser.
 - Atalho de teclado: <kbd>Espaço</kbd> inicia e pausa.
 - Continua contando certo com a aba em segundo plano, a página recarregada ou o computador em suspensão.
+- Modo **Sem desistir** (opcional): durante o Pomodoro, pular, resetar e trocar de modo somem, e começar exige
+  dois cliques. Dá para desligar a qualquer momento.
+- As durações ficam travadas enquanto uma sessão está aberta, e fechar a página no meio de uma sessão pede
+  confirmação.
 
 ### 🧠 Hyperfocus
 Quando o Pomodoro acaba e você está rendendo, o timer não te interrompe: o tempo extra continua contando até

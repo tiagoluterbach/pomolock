@@ -17,7 +17,7 @@ export default function DashboardPage() {
 
     return (
         <div className="min-h-screen bg-[#1A1B24] pt-16 px-4 pb-8">
-            <div className="max-w-lg mx-auto space-y-6">
+            <div className="max-w-lg mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-1 duration-500 ease-[var(--ease-apple)]">
                 <PageHeader title="Statistics" />
 
                 {streak > 0 && (
@@ -27,14 +27,14 @@ export default function DashboardPage() {
                     </div>
                 )}
 
-                <div className="bg-zinc-800/30 rounded-xl p-5 border border-zinc-700/30 transform scale-110 origin-top">
+                <div className="glass rounded-2xl p-5 transform scale-110 origin-top">
                     <HeatmapCalendar sessions={days} accentColor={dashboardAccent} />
                 </div>
             </div>
 
             {/* Wider than the month view so all 53 weeks fit on desktop; scrolls on phones.
                 The top margin clears the month card, which scale-110 enlarges past its box. */}
-            <div className="max-w-2xl mx-auto mt-16 bg-zinc-800/30 rounded-xl p-5 border border-zinc-700/30">
+            <div className="max-w-2xl mx-auto mt-16 glass rounded-2xl p-5 animate-in fade-in slide-in-from-bottom-1 duration-500 ease-[var(--ease-apple)]">
                 <YearHeatmap days={days} />
             </div>
         </div>

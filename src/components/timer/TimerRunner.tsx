@@ -1,7 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import { useTimerStore, HYPERFOCUS_IDLE_WARNING_MS, HYPERFOCUS_IDLE_GRACE_MS } from '@/stores/timerStore'
+import {
+    useTimerStore,
+    isSessionInProgress,
+    HYPERFOCUS_IDLE_WARNING_MS,
+    HYPERFOCUS_IDLE_GRACE_MS,
+} from '@/stores/timerStore'
 import { formatClock } from '@/lib/utils'
 import { ALARM_FILES, type AppSettings } from '@/types'
 
@@ -197,6 +202,20 @@ export function TimerRunner() {
     useEffect(() => {
         if (status === 'running' || status === 'hyperfocus') stopAlarm()
     }, [status, stopAlarm])
+
+    // Ask before closing or reloading the page during a session. Browsers show
+    // their own "Leave site?" dialog and ignore custom text; the timer itself
+    // survives either way, since its clock is saved.
+    useEffect(() => {
+        if (!isSessionInProgress(status)) return
+        const handler = (event: BeforeUnloadEvent) => {
+            event.preventDefault()
+            // Older browsers only show the dialog when returnValue is set.
+            event.returnValue = ''
+        }
+        window.addEventListener('beforeunload', handler)
+        return () => window.removeEventListener('beforeunload', handler)
+    }, [status])
 
     // Other tabs write the same storage key; adopt their state so tabs never
     // overwrite each other's sessions or finish the same phase twice.

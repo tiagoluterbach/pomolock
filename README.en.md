@@ -37,6 +37,9 @@ worked the same on my home computer and at university. I could not find one, so 
 - Optional auto-start for breaks and Pomodoros.
 - Keyboard shortcut: <kbd>Space</kbd> starts and pauses.
 - Keeps accurate time with the tab in the background, after a reload or while the computer sleeps.
+- Optional **No giving up** mode: during a Pomodoro, skip, reset and mode switching disappear, and starting
+  takes two clicks. It can be turned off at any time.
+- Durations are locked while a session is open, and closing the page mid-session asks for confirmation.
 
 ### 🧠 Hyperfocus
 When a Pomodoro ends and you are on a roll, the timer does not interrupt you: extra time keeps counting until
