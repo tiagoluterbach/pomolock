@@ -286,15 +286,14 @@ export function TimerRunner() {
 
             const { settings, hyperfocusEnabled } = state
             // Transition synchronously so another wake-up cannot complete twice.
+            // Hyperfocus keeps the session going silently: no alarm, no notification.
             if (state.mode === 'focus' && hyperfocusEnabled) {
                 state.enterHyperfocus()
-            } else {
-                state.complete()
+                return
             }
+            state.complete()
             if (!document.hasFocus()) showTimerNotification(state.mode)
-            if (settings.soundEnabled && !(state.mode === 'focus' && hyperfocusEnabled)) {
-                playAlarm(settings)
-            }
+            if (settings.soundEnabled) playAlarm(settings)
         }
 
         let worker: Worker | null = null

@@ -98,6 +98,21 @@ describe('timer wake-ups and completion', () => {
         expect(useTimerStore.getState().pendingSessions).toHaveLength(0)
     })
 
+    it('enters hyperfocus without notifying that the pomodoro finished', () => {
+        const Notification = vi.fn()
+        vi.stubGlobal('Notification', Object.assign(Notification, { permission: 'granted' }))
+        vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+        useTimerStore.getState().toggleHyperfocus()
+        useTimerStore.getState().start()
+        render(<TimerRunner />)
+        act(() => {
+            vi.advanceTimersByTime(3600000)
+            TimerWorker.instances.at(-1)!.tick()
+        })
+        expect(useTimerStore.getState().status).toBe('hyperfocus')
+        expect(Notification).not.toHaveBeenCalled()
+    })
+
     it('keeps measuring time when workers are unavailable', () => {
         vi.stubGlobal('Worker', undefined)
         useTimerStore.getState().start()
