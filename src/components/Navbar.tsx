@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
 import { signOut } from '@/lib/auth'
 import { confirmAndResetStatistics } from '@/lib/syncController'
@@ -12,6 +13,8 @@ import { cn } from '@/lib/utils'
 
 export function Navbar() {
     const { user } = useUser()
+    // The timer screen shows the logo itself, right where this one would sit.
+    const showBrand = usePathname() !== '/'
     const [showDropdown, setShowDropdown] = useState(false)
     const [scrolled, setScrolled] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
@@ -52,17 +55,19 @@ export function Navbar() {
                     : 'bg-transparent border-transparent',
             )}
         >
-            <Link
-                href="/"
-                className="pointer-events-auto flex items-center gap-2 text-white/90 hover:text-white transition-colors"
-            >
-                <Timer className="h-5 w-5" />
-                <span className="font-bold text-lg tracking-tight hidden sm:inline">
-                    PomoLock
-                </span>
-            </Link>
+            {showBrand && (
+                <Link
+                    href="/"
+                    className="pointer-events-auto flex items-center gap-2 text-white/90 hover:text-white transition-colors"
+                >
+                    <Timer className="h-5 w-5" />
+                    <span className="font-bold text-lg tracking-tight hidden sm:inline">
+                        PomoLock
+                    </span>
+                </Link>
+            )}
 
-            <div className="pointer-events-auto flex items-center gap-1">
+            <div className="pointer-events-auto ml-auto flex items-center gap-1">
                 <Link href="/dashboard">
                     <Button
                         variant="ghost"

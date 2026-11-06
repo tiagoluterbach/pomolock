@@ -45,6 +45,19 @@ export async function pushSettingsToCloud(settings: AppSettings): Promise<boolea
     return !error
 }
 
+function toRow(session: FocusSession, userId: string) {
+    return {
+        id: session.id,
+        user_id: userId,
+        started_at: session.startedAt,
+        duration_minutes: session.durationMinutes,
+        actual_duration_seconds: session.actualDurationSeconds,
+        hyperfocus_seconds: session.hyperfocusSeconds,
+        completed: session.completed,
+        created_at: session.createdAt,
+    }
+}
+
 /**
  * Push focus sessions to Supabase in a single request.
  * Sessions never change after being saved, so rows that already exist are
@@ -60,16 +73,7 @@ export async function pushSessionsToCloud(sessions: FocusSession[]): Promise<str
     const { error } = await supabase
         .from('focus_sessions')
         .upsert(
-            sessions.map((session) => ({
-                id: session.id,
-                user_id: user.id,
-                started_at: session.startedAt,
-                duration_minutes: session.durationMinutes,
-                actual_duration_seconds: session.actualDurationSeconds,
-                hyperfocus_seconds: session.hyperfocusSeconds,
-                completed: session.completed,
-                created_at: session.createdAt,
-            })),
+            sessions.map((session) => toRow(session, user.id)),
             { onConflict: 'id', ignoreDuplicates: true },
         )
 
@@ -77,10 +81,35 @@ export async function pushSessionsToCloud(sessions: FocusSession[]): Promise<str
 }
 
 /**
- * Fetch all focus sessions from Supabase for the current user.
- * Returns empty array if no sessions exist or user is not logged in.
+ * Last-chance upload for a page that is closing, when awaiting anything (even
+ * reading the auth session) may never finish. keepalive lets the request outlive
+ * the page. Sessions stay pending until a later sync confirms them; re-sending
+ * is safe because existing rows are skipped.
  */
-export async function fetchCloudSessions(): Promise<FocusSession[]> {
+export function sendSessionsBeforeClose(sessions: FocusSession[], userId: string, accessToken: string): void {
+    if (sessions.length === 0) return
+
+    // Browsers refuse keepalive bodies over 64 KB; older ones wait for the next sync.
+    const rows = sessions.slice(-100).map((session) => toRow(session, userId))
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/focus_sessions?on_conflict=id`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=ignore-duplicates,return=minimal',
+        },
+        body: JSON.stringify(rows),
+    }).catch(() => {})
+}
+
+/**
+ * Fetch all focus sessions from Supabase for the current user.
+ * Returns an empty array if logged out, and null if they could not be read, so
+ * a failed request is never mistaken for an empty history.
+ */
+export async function fetchCloudSessions(): Promise<FocusSession[] | null> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
@@ -98,8 +127,8 @@ export async function fetchCloudSessions(): Promise<FocusSession[]> {
             .order('id', { ascending: true })
             .range(from, from + PAGE_SIZE - 1)
 
-        // A partial history would look like lost study time; show none instead.
-        if (error || !page) return []
+        // A partial history would look like lost study time.
+        if (error || !page) return null
         data.push(...page)
         if (page.length < PAGE_SIZE) break
     }
@@ -156,6 +185,18 @@ export async function confirmAndResetStatistics() {
     }
 }
 
+/** Cloud wins, but a deep merge preserves new local fields and the local key order. */
+export function mergeCloudSettings(local: AppSettings, cloud: AppSettings): AppSettings {
+    return {
+        ...local,
+        ...cloud,
+        modeColors: {
+            ...local.modeColors,
+            ...(cloud.modeColors ?? {}),
+        },
+    }
+}
+
 /**
  * Full sync on login: pull cloud settings and push pending sessions.
  * Cloud settings take priority over local (last-write-wins from cloud).
@@ -170,16 +211,7 @@ export async function syncOnLogin(
     const cloudSettings = await fetchCloudSettings()
 
     if (cloudSettings) {
-        // Cloud wins — but deep merge to preserve new local fields
-        const merged: AppSettings = {
-            ...localSettings,
-            ...cloudSettings,
-            modeColors: {
-                ...localSettings.modeColors,
-                ...(cloudSettings.modeColors ?? {}),
-            },
-        }
-        onSettingsMerged(merged)
+        onSettingsMerged(mergeCloudSettings(localSettings, cloudSettings))
     } else {
         // No cloud settings yet — push local settings to cloud
         await pushSettingsToCloud(localSettings)

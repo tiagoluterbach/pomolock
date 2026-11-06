@@ -10,7 +10,7 @@ import {
 import { formatClock } from '@/lib/utils'
 import { ALARM_FILES, type AppSettings } from '@/types'
 
-// Request notification permission on first load
+// Android only allows notification permission prompts after a gesture.
 function requestNotificationPermission() {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission()
@@ -31,20 +31,25 @@ function showTimerNotification(mode: string) {
 function showNotification(title: string, body: string) {
     if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return
 
+    const options: NotificationOptions = {
+        body,
+        icon: '/icon-192.png',
+        tag: 'pomolock-timer', // Replaces previous notification
+        requireInteraction: true, // Stays until user clicks
+    }
+
     try {
-        const notification = new Notification(title, {
-            body,
-            icon: '/icon-192.png',
-            tag: 'pomolock-timer', // Replaces previous notification
-            requireInteraction: true, // Stays until user clicks
-        })
+        const notification = new Notification(title, options)
 
         notification.onclick = () => {
             window.focus()
             notification.close()
         }
     } catch {
-        // Fallback: some browsers don't support Notification constructor in this context
+        // Android has no Notification constructor; only the service worker can notify.
+        navigator.serviceWorker?.ready
+            .then((registration) => registration.showNotification(title, options))
+            .catch(() => {})
     }
 }
 
@@ -64,11 +69,6 @@ export function TimerRunner() {
     const audioCtxRef = useRef<AudioContext | null>(null)
     const audioBuffersRef = useRef<Record<string, AudioBuffer>>({})
     const keepAliveRef = useRef<number | null>(null)
-
-    // Request notification permission on mount
-    useEffect(() => {
-        requestNotificationPermission()
-    }, [])
 
     // Initialize AudioContext on first user interaction & pre-fetch audio buffers
     useEffect(() => {
@@ -91,6 +91,7 @@ export function TimerRunner() {
         // Initialize on first click/keypress (required by browsers)
         const handler = () => {
             initAudioContext()
+            requestNotificationPermission()
             window.removeEventListener('click', handler)
             window.removeEventListener('keydown', handler)
         }
@@ -217,12 +218,29 @@ export function TimerRunner() {
         return () => window.removeEventListener('beforeunload', handler)
     }, [status])
 
+    // Closing the page saves the time studied so far; opening one decides whether
+    // that session resumes or already ended. Declared before the clock's refresh
+    // effect, so a session ended here is not completed there on the same mount.
+    useEffect(() => {
+        const onPageHide = () => useTimerStore.getState().markPageClosed()
+        const onPageShow = () => useTimerStore.getState().settleClosedPage()
+        window.addEventListener('pagehide', onPageHide)
+        window.addEventListener('pageshow', onPageShow)
+        onPageShow()
+        return () => {
+            window.removeEventListener('pagehide', onPageHide)
+            window.removeEventListener('pageshow', onPageShow)
+        }
+    }, [])
+
     // Other tabs write the same storage key; adopt their state so tabs never
     // overwrite each other's sessions or finish the same phase twice.
     useEffect(() => {
-        const handler = (event: StorageEvent) => {
+        const handler = async (event: StorageEvent) => {
             if (event.key === useTimerStore.persist.getOptions().name) {
-                useTimerStore.persist.rehydrate()
+                await useTimerStore.persist.rehydrate()
+                // Another tab closed, but this one is still showing the timer.
+                useTimerStore.getState().clearPageClosed()
             }
         }
         window.addEventListener('storage', handler)

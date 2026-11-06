@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pomolock-v6';
+const CACHE_NAME = 'pomolock-v7';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
@@ -49,10 +49,13 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(request)
                 .then((response) => {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(request, clone);
-                    });
+                    // Never keep error pages or auth redirects for offline use.
+                    if (response.ok && !response.redirected) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(request, clone);
+                        });
+                    }
                     return response;
                 })
                 .catch(() => caches.match(request).then((r) => r || caches.match('/')))
@@ -68,14 +71,27 @@ self.addEventListener('fetch', (event) => {
             caches.match(request).then((cached) => {
                 if (cached) return cached;
                 return fetch(request).then((response) => {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(request, clone);
-                    });
+                    if (response.ok) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(request, clone);
+                        });
+                    }
                     return response;
                 });
             })
         );
         return;
     }
+});
+
+// Android shows timer notifications through this worker: tapping one opens the app.
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+            if (clients.length > 0) return clients[0].focus();
+            return self.clients.openWindow('/');
+        })
+    );
 });

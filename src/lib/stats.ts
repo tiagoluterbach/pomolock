@@ -4,6 +4,9 @@ import { getLocalDateString } from '@/lib/utils'
 /** Total study time and session count per local day, oldest first. */
 export function buildDayStats(sessions: FocusSession[]): DayStats[] {
     const dayMap = new Map<string, DayStats>()
+    // A Pomodoro interrupted by closing the page is saved in parts sharing its
+    // start time; those are still one session.
+    const seenStarts = new Set<string>()
 
     for (const session of sessions) {
         const date = getLocalDateString(new Date(session.startedAt))
@@ -11,7 +14,8 @@ export function buildDayStats(sessions: FocusSession[]): DayStats[] {
         // Sum seconds and round once, so partial minutes of each session add up.
         existing.totalSeconds += session.actualDurationSeconds
         existing.totalMinutes = Math.floor(existing.totalSeconds / 60)
-        existing.sessionCount += 1
+        if (!seenStarts.has(session.startedAt)) existing.sessionCount += 1
+        seenStarts.add(session.startedAt)
         dayMap.set(date, existing)
     }
 

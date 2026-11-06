@@ -44,6 +44,12 @@ interface TimerState {
     phaseDuration: number | null
     // Last time (ms) the user interacted with the app; bounds hyperfocus overtime.
     lastActivityAt: number | null
+    // Part of this phase already saved as sessions when a page closed. Later
+    // saves only add what came after it, so sessions never overlap.
+    recordedSeconds: number
+    recordedHyperfocusSeconds: number
+    // When the last page showing this timer closed; cleared by the next one.
+    closedAt: number | null
 
     // Settings
     settings: AppSettings
@@ -65,6 +71,9 @@ interface TimerState {
     exitHyperfocus: () => void
     toggleHyperfocus: () => void
     markActivity: () => void
+    markPageClosed: () => void
+    settleClosedPage: () => void
+    clearPageClosed: () => void
     updateSettings: (settings: Partial<AppSettings>) => void
     resetStats: () => void
 
@@ -110,6 +119,15 @@ export function getNextMode(
 // and if nobody answers, hyperfocus pauses and the unanswered time is dropped.
 export const HYPERFOCUS_IDLE_WARNING_MS = 90 * 60 * 1000
 export const HYPERFOCUS_IDLE_GRACE_MS = 5 * 60 * 1000
+
+// Closing the page ends the session at that moment, unless a page comes back
+// within this long (a reload or a tab closed by accident), which resumes it.
+export const CLOSED_PAGE_GRACE_MS = 5 * 60 * 1000
+
+// Partial sessions need at least this much time to count.
+const MIN_SESSION_SECONDS = 60
+
+const NOTHING_RECORDED = { recordedSeconds: 0, recordedHyperfocusSeconds: 0, closedAt: null }
 
 // Helper to get the correct pomodoro count, resetting if the day changed
 function getDailyPomodoros(completedPomodoros: number, lastPomodoroDate: string | null): number {
@@ -168,7 +186,14 @@ export function isGivingUpLocked(
 
 type SessionSource = Pick<
     TimerState,
-    'mode' | 'settings' | 'secondsRemaining' | 'hyperfocusSeconds' | 'phaseDuration' | 'sessionStartedAt'
+    | 'mode'
+    | 'settings'
+    | 'secondsRemaining'
+    | 'hyperfocusSeconds'
+    | 'phaseDuration'
+    | 'sessionStartedAt'
+    | 'recordedSeconds'
+    | 'recordedHyperfocusSeconds'
 >
 
 // Older persisted snapshots have no phaseDuration; fall back to the settings.
@@ -189,27 +214,35 @@ function isIdleHyperfocus(state: Pick<TimerState, 'status' | 'lastActivityAt'>, 
     )
 }
 
+// Time of this phase not yet saved as a session.
+function getUnrecordedSeconds(state: SessionSource): number {
+    return getElapsedSeconds(state) - state.recordedSeconds
+}
+
+// Sessions share the phase's startedAt, so the time stays on the day it began
+// and the stats can tell they are parts of one Pomodoro.
 function buildSession(state: SessionSource, completed: boolean): FocusSession {
-    const elapsedSeconds = getElapsedSeconds(state)
+    const elapsedSeconds = getUnrecordedSeconds(state)
     return {
         id: generateId(),
         userId: '',
         startedAt: state.sessionStartedAt!,
         durationMinutes: Math.floor(elapsedSeconds / 60),
         actualDurationSeconds: elapsedSeconds,
-        hyperfocusSeconds: state.hyperfocusSeconds,
+        hyperfocusSeconds: Math.max(0, state.hyperfocusSeconds - state.recordedHyperfocusSeconds),
         completed,
         createdAt: new Date().toISOString(),
     }
 }
 
-// Partial sessions (reset, mode switch, stale recovery) need at least 1 minute.
+// Partial sessions (reset, mode switch, closed page, stale recovery) need at least 1 minute.
 function shouldSavePartialSession(state: SessionSource & Pick<TimerState, 'status'>): boolean {
     return (
         state.mode === 'focus' &&
         isActive(state.status) &&
         !!state.sessionStartedAt &&
-        getElapsedSeconds(state) >= 60
+        getElapsedSeconds(state) >= MIN_SESSION_SECONDS &&
+        getUnrecordedSeconds(state) > 0
     )
 }
 
@@ -233,6 +266,7 @@ export const useTimerStore = create<TimerState>()(
             clock: null,
             phaseDuration: null,
             lastActivityAt: null,
+            ...NOTHING_RECORDED,
 
             // Settings
             settings: DEFAULT_SETTINGS,
@@ -261,6 +295,7 @@ export const useTimerStore = create<TimerState>()(
                     hyperfocusSeconds: 0,
                     sessionStartedAt: null,
                     pausedFromHyperfocus: false,
+                    ...NOTHING_RECORDED,
                 })
             },
 
@@ -319,6 +354,7 @@ export const useTimerStore = create<TimerState>()(
                     hyperfocusSeconds: 0,
                     sessionStartedAt: null,
                     pausedFromHyperfocus: false,
+                    ...NOTHING_RECORDED,
                 })
             },
 
@@ -331,10 +367,10 @@ export const useTimerStore = create<TimerState>()(
                 const nextMode = getNextMode(mode, dailyPomodoros, settings)
                 // Like reset, a skipped focus needs at least a minute to count.
                 const countsAsSession =
-                    mode === 'focus' && !!sessionStartedAt && getElapsedSeconds(state) >= 60
+                    mode === 'focus' && !!sessionStartedAt && getElapsedSeconds(state) >= MIN_SESSION_SECONDS
                 const newPomodoros = countsAsSession ? dailyPomodoros + 1 : dailyPomodoros
 
-                if (countsAsSession) {
+                if (countsAsSession && getUnrecordedSeconds(state) > 0) {
                     // Skipping after the countdown ended (hyperfocus) still finished the Pomodoro.
                     get().addPendingSession(buildSession(state, state.secondsRemaining === 0))
                 }
@@ -350,6 +386,7 @@ export const useTimerStore = create<TimerState>()(
                     lastPomodoroDate: getLocalDateString(),
                     sessionStartedAt: null,
                     pausedFromHyperfocus: false,
+                    ...NOTHING_RECORDED,
                 })
             },
 
@@ -361,7 +398,7 @@ export const useTimerStore = create<TimerState>()(
                 const newPomodoros = mode === 'focus' ? dailyPomodoros + 1 : dailyPomodoros
 
                 // Save completed session if focus mode
-                if (mode === 'focus' && sessionStartedAt) {
+                if (mode === 'focus' && sessionStartedAt && getUnrecordedSeconds(state) > 0) {
                     get().addPendingSession(buildSession(state, true))
                 }
 
@@ -387,6 +424,7 @@ export const useTimerStore = create<TimerState>()(
                     lastPomodoroDate: getLocalDateString(),
                     sessionStartedAt: shouldAutoStart ? new Date().toISOString() : null,
                     pausedFromHyperfocus: false,
+                    ...NOTHING_RECORDED,
                 })
             },
 
@@ -441,7 +479,7 @@ export const useTimerStore = create<TimerState>()(
                 const newPomodoros = dailyPomodoros + 1
 
                 // Save session with hyperfocus time
-                if (sessionStartedAt) {
+                if (sessionStartedAt && getUnrecordedSeconds(state) > 0) {
                     get().addPendingSession(buildSession(state, true))
                 }
 
@@ -456,6 +494,7 @@ export const useTimerStore = create<TimerState>()(
                     lastPomodoroDate: getLocalDateString(),
                     sessionStartedAt: null,
                     pausedFromHyperfocus: false,
+                    ...NOTHING_RECORDED,
                 })
             },
 
@@ -473,6 +512,72 @@ export const useTimerStore = create<TimerState>()(
                 // which settles the gap; the following event records activity.
                 if (state.status === 'running' && state.secondsRemaining === 0) return
                 set({ lastActivityAt: Date.now() })
+            },
+
+            markPageClosed: () => {
+                get().tick()
+                const state = get()
+                if (!isActive(state.status)) return
+                const updates: Partial<TimerState> = { closedAt: Date.now() }
+
+                // Nothing can run once the page is gone, so save the time now.
+                // Short remainders wait for the next save, to spare reloads a row each.
+                if (
+                    shouldSavePartialSession(state) &&
+                    getUnrecordedSeconds(state) >= MIN_SESSION_SECONDS
+                ) {
+                    updates.pendingSessions = [
+                        ...state.pendingSessions,
+                        buildSession(state, state.secondsRemaining === 0),
+                    ]
+                    updates.recordedSeconds = getElapsedSeconds(state)
+                    updates.recordedHyperfocusSeconds = state.hyperfocusSeconds
+                }
+                set(updates)
+            },
+
+            settleClosedPage: () => {
+                const state = get()
+                const { closedAt } = state
+                if (closedAt === null) return
+
+                // Back soon, or paused (no time passes): carry on where it was.
+                if (state.status === 'paused' || Date.now() - closedAt <= CLOSED_PAGE_GRACE_MS) {
+                    set({ closedAt: null })
+                    return
+                }
+
+                // Gone for good: the session ended when the page closed. The time
+                // away is not study time, even if the countdown ran out meanwhile.
+                const atClose = { ...state, ...clockDisplay(readClock(state, closedAt)) }
+                if (shouldSavePartialSession(atClose)) {
+                    get().addPendingSession(buildSession(atClose, atClose.secondsRemaining === 0))
+                }
+                // Only hyperfocus closes with the countdown already finished.
+                const finishedPomodoro =
+                    atClose.mode === 'focus' &&
+                    atClose.secondsRemaining === 0 &&
+                    getLocalDateString(new Date(closedAt)) === getLocalDateString()
+
+                set({
+                    mode: 'focus',
+                    status: 'idle',
+                    clock: null,
+                    phaseDuration: null,
+                    secondsRemaining: getDurationForMode('focus', state.settings),
+                    hyperfocusSeconds: 0,
+                    sessionStartedAt: null,
+                    pausedFromHyperfocus: false,
+                    ...NOTHING_RECORDED,
+                    ...(finishedPomodoro ? {
+                        completedPomodoros: getDailyPomodoros(state.completedPomodoros, state.lastPomodoroDate) + 1,
+                        lastPomodoroDate: getLocalDateString(),
+                    } : {}),
+                })
+            },
+
+            clearPageClosed: () => {
+                if (get().closedAt !== null) set({ closedAt: null })
             },
 
             updateSettings: (newSettings) => {
@@ -549,6 +654,9 @@ export const useTimerStore = create<TimerState>()(
                 clock: state.clock,
                 phaseDuration: state.phaseDuration,
                 lastActivityAt: state.lastActivityAt,
+                recordedSeconds: state.recordedSeconds,
+                recordedHyperfocusSeconds: state.recordedHyperfocusSeconds,
+                closedAt: state.closedAt,
                 pendingSessions: state.pendingSessions,
             }),
             // Deep merge to handle new settings fields (e.g. dashboardAccent)
@@ -595,6 +703,7 @@ export const useTimerStore = create<TimerState>()(
                         merged.pausedFromHyperfocus = false
                         merged.clock = null
                         merged.phaseDuration = null
+                        Object.assign(merged, NOTHING_RECORDED)
                     }
                 }
 

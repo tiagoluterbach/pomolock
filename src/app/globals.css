@@ -124,8 +124,16 @@
     user-select: none;
     -webkit-user-select: none;
   }
+  html {
+    /* The installed app's background, also behind overscroll and system bars. */
+    background-color: #1a1b24;
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground;
+    /* No pull-to-refresh or bounce: an accidental swipe should not reload the app. */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
   }
   input, textarea {
     user-select: text;

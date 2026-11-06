@@ -6,7 +6,7 @@ import { ModeSelector } from './ModeSelector'
 import { TimerDisplay } from './TimerDisplay'
 import { TimerControls } from './TimerControls'
 import { HyperfocusIdleWarning } from './HyperfocusIdleWarning'
-import { BarChart3, Hourglass } from 'lucide-react'
+import { BarChart3, Hourglass, Timer as TimerIcon } from 'lucide-react'
 import Link from 'next/link'
 
 export function Timer() {
@@ -72,13 +72,14 @@ export function Timer() {
     const pomodoroText = completedPomodoros === 1 ? 'Pomodoro' : 'Pomodoros'
 
     return (
-        <div className="min-h-screen bg-[#1A1B24] flex flex-col items-center pt-8 px-4 animate-in fade-in slide-in-from-bottom-1 duration-500 ease-[var(--ease-apple)]">
+        <div className="min-h-screen bg-[#1A1B24] flex flex-col items-center pt-4 px-4 animate-in fade-in slide-in-from-bottom-1 duration-500 ease-[var(--ease-apple)]">
             {/* Header */}
             <header className="w-full max-w-md flex items-center justify-between mb-8">
                 <h1
-                    className="text-2xl font-bold text-white italic tracking-tight transition-colors duration-500 ease-[var(--ease-apple)]"
+                    className="flex items-center gap-2 text-2xl font-bold text-white italic tracking-tight transition-colors duration-500 ease-[var(--ease-apple)]"
                     style={{ color: accentColor }}
                 >
+                    <TimerIcon className="h-6 w-6" aria-hidden="true" />
                     PomoLock
                 </h1>
             </header>
